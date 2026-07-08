@@ -635,7 +635,7 @@ window.addEventListener('popstate', e=>{
   else { tab = 'today'; bNode = null; }
   render(); window.scrollTo(0,0);
 });
-const TABS = [['today','Today'],['browse','Browse'],['tree','Tree'],['habits','Recurring'],['triage','Triage'],['done','Done']];
+const TABS = [['today','Today'],['tree','Tree'],['browse','Browse'],['habits','Recurring'],['triage','Triage'],['done','Done']];
 function renderTabs(){
   const n = document.getElementById('tabs');
   const tn = db.items.filter(i=>needsTriage(i)&&inRealm(i)).length;
