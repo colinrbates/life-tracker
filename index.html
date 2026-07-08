@@ -1150,7 +1150,8 @@ function bindReview(v){
 
 /* Browse */
 let bFilter = {realm:'', q:'', prio:'', mode:'active'};
-let bNode = null; // set by tapping the Setup structure tree
+let bNode = null; // set by tapping the structure tree
+let pinDraft = '';
 function nodeMatch(val, want){
   if(want==null) return true;
   if(want.startsWith('(no ')) return !val;
@@ -1187,6 +1188,15 @@ function viewBrowse(){
     <button class="chip ${bFilter.mode==='someday'?'on':''}" data-mode="someday">💤 Someday</button>
     <button class="chip ${bFilter.mode==='waiting'?'on':''}" data-mode="waiting">⏳ Waiting</button>`}
   </div>`;
+  if(bNode){
+    h += `<div class="quick">
+      <div class="q-head">＋ Add tasks here <span class="q-sub">filed under ${esc([bNode.realm,bNode.stream,bNode.cat].filter(n=>n&&!n.startsWith('(no ')).join(' › ')||'(unfiled)')}</span></div>
+      <div class="q-add">
+        <textarea id="pinNew" rows="${Math.min(6, Math.max(1, pinDraft.split('\n').length))}" placeholder="One per line, ⏎ for the next…">${esc(pinDraft)}</textarea>
+        <button class="q-commit" id="pinAddBtn" aria-label="Add these tasks" title="Add these tasks">✓</button>
+      </div>
+    </div>`;
+  }
   const keys = Object.keys(groups).sort();
   if(!keys.length) h += `<div class="empty">Nothing matches.</div>`;
   keys.forEach(k=>{
@@ -1204,6 +1214,27 @@ function bindBrowse(v){
   v.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ bFilter.mode=b.dataset.mode; render(); });
   const nc = v.querySelector('#bNodeClear');
   if(nc) nc.onclick = ()=>{ bNode = null; pushNav(); render(); };
+  const pn = v.querySelector('#pinNew');
+  if(pn){
+    pn.addEventListener('input', ()=>{
+      pinDraft = pn.value;
+      pn.rows = Math.min(6, Math.max(1, pn.value.split('\n').length));
+    });
+    const clean = x => (x && !x.startsWith('(no ')) ? x : '';
+    const commit = ()=>{
+      const lines = pn.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      if(!lines.length) return;
+      lines.reverse().forEach(t=>db.items.unshift({
+        id:uid(), added:TODAY(), realm:clean(bNode.realm), stream:clean(bNode.stream), category:clean(bNode.cat),
+        desc:t, priority:null, ongoing:false, next:'', notes:'', due:null,
+        status:'open', doneAt:null, snoozedUntil:null, someday:false, effort:null, waiting:null
+      }));
+      pinDraft = '';
+      save(); toast(lines.length===1?'Added here':`Added ${lines.length} tasks here`); render();
+    };
+    pn.addEventListener('keydown', e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) commit(); });
+    v.querySelector('#pinAddBtn').onclick = commit;
+  }
 }
 
 /* Habits */
