@@ -1,0 +1,1958 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Life Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --ink:#1e2a26; --ink-soft:#55635d; --ink-faint:#8a958f;
+  --ground:#f4f6f3; --surface:#ffffff; --line:#dde3de;
+  --accent:#2e6e4e; --accent-soft:#e3efe8;
+  --p1:#a9432e; --p2:#b7791f; --p3:#2e6e4e; --p4:#5f7470; --p5:#98a39d;
+  --danger:#a9432e;
+  --radius:10px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ink:#e4eae6; --ink-soft:#a3b0a9; --ink-faint:#6f7a74;
+    --ground:#141a17; --surface:#1d2420; --line:#2c352f;
+    --accent:#5fae87; --accent-soft:#23342b;
+    --p1:#d97256; --p2:#d1a04a; --p3:#5fae87; --p4:#8ba09b; --p5:#6f7a74;
+    --danger:#d97256;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#e4eae6; --ink-soft:#a3b0a9; --ink-faint:#6f7a74;
+  --ground:#141a17; --surface:#1d2420; --line:#2c352f;
+  --accent:#5fae87; --accent-soft:#23342b;
+  --p1:#d97256; --p2:#d1a04a; --p3:#5fae87; --p4:#8ba09b; --p5:#6f7a74;
+  --danger:#d97256;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px;color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.wrap{max-width:760px;margin:0 auto;padding:0 14px 90px}
+
+/* header */
+header{padding:18px 2px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+.hdr-actions{display:flex;gap:6px}
+.hdr-actions button{background:none;border:none;color:var(--ink-faint);font-size:13px;padding:4px 6px;border-radius:6px}
+.hdr-actions button:hover{color:var(--accent);background:var(--accent-soft)}
+
+/* tabs */
+nav{display:flex;gap:4px;position:sticky;top:0;background:var(--ground);padding:8px 0;z-index:20;overflow-x:auto;-webkit-overflow-scrolling:touch}
+nav button{flex:1;white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);padding:9px 10px;border-radius:999px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px}
+nav button.on{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+nav .badge{font-size:11px;font-family:var(--mono);background:var(--p2);color:#fff;border-radius:999px;padding:1px 7px;min-width:20px}
+nav button.on .badge{background:var(--p2)}
+
+/* capture */
+.capture{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px;margin:8px 0 16px;box-shadow:0 1px 3px rgba(20,35,28,.06)}
+.capture .row1{display:flex;gap:8px}
+.capture input[type=text]{flex:1;border:none;background:none;padding:8px 6px;font-size:16px}
+.capture input[type=text]::placeholder{color:var(--ink-faint)}
+.capture .add{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700}
+.capture .add:disabled{opacity:.4;cursor:default}
+.cap-toggle{border:none;background:none;color:var(--ink-faint);font-size:15px;padding:6px 8px;border-radius:7px;cursor:pointer}
+.cap-toggle:hover{color:var(--accent);background:var(--accent-soft)}
+.cap-detail{display:none;border-top:1px solid var(--line);margin-top:10px;padding-top:12px;flex-direction:column;gap:10px}
+.cap-detail.open{display:flex}
+.cap-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+@media(max-width:560px){.cap-grid{grid-template-columns:1fr 1fr}}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-weight:700}
+.field select,.field input,.field textarea{border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--ground)}
+.prio-pick{display:flex;gap:6px;flex-wrap:wrap}
+.prio-pick button{border:1px solid var(--line);background:var(--ground);border-radius:8px;padding:6px 12px;font-weight:700;font-size:14px;color:var(--ink-soft)}
+.prio-pick button.on{color:#fff;border-color:transparent}
+.prio-pick button.on.pv1{background:var(--p1)}.prio-pick button.on.pv2{background:var(--p2)}
+.prio-pick button.on.pv3{background:var(--p3)}.prio-pick button.on.pv4{background:var(--p4)}
+.prio-pick button.on.pv5{background:var(--p5)}.prio-pick button.on.pvo{background:var(--accent)}
+
+/* section titles */
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-faint);font-weight:700;margin:22px 2px 8px}
+h2 b{color:var(--ink-soft)}
+.hint{font-size:13px;color:var(--ink-faint);margin:4px 2px 10px}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 12px 10px;margin-bottom:8px;border-left:4px solid var(--line)}
+.card.pl1{border-left-color:var(--p1)}.card.pl2{border-left-color:var(--p2)}
+.card.pl3{border-left-color:var(--p3)}.card.pl4{border-left-color:var(--p4)}
+.card.pl5{border-left-color:var(--p5)}.card.plo{border-left-color:var(--accent)}
+.card .top{display:flex;gap:8px;align-items:flex-start}
+.card .desc{flex:1;font-weight:600;font-size:15px}
+.card .desc.done-text{text-decoration:line-through;color:var(--ink-faint)}
+.pill{font-size:11px;font-weight:800;font-family:var(--mono);border-radius:6px;padding:2px 7px;color:#fff;flex-shrink:0}
+.pill.pv1{background:var(--p1)}.pill.pv2{background:var(--p2)}.pill.pv3{background:var(--p3)}
+.pill.pv4{background:var(--p4)}.pill.pv5{background:var(--p5)}.pill.pvo{background:var(--accent)}
+.pill.pvn{background:none;color:var(--ink-faint);border:1px dashed var(--ink-faint)}
+.meta{font-size:12px;color:var(--ink-faint);margin-top:3px}
+.meta .age-warn{color:var(--p2);font-weight:700}
+.note{font-size:13px;color:var(--ink-soft);margin-top:5px;font-style:italic;white-space:pre-line}
+.next{font-size:13.5px;font-weight:600;color:var(--accent);margin-top:6px}
+.next-add{margin-top:7px}
+.next-add input{width:100%;border:1px dashed var(--ink-faint);border-radius:7px;padding:6px 9px;background:none;font-size:13px;color:var(--ink)}
+.next-add input::placeholder{color:var(--ink-faint)}
+.card .acts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.acts button{border:1px solid var(--line);background:var(--ground);color:var(--ink-soft);border-radius:7px;padding:5px 11px;font-size:13px;font-weight:600}
+.acts button.do{background:var(--accent);border-color:var(--accent);color:#fff}
+.acts button.warn:hover{border-color:var(--danger);color:var(--danger)}
+
+/* triage */
+.triage-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 16px;box-shadow:0 4px 16px rgba(20,35,28,.08)}
+.triage-card .q{font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;margin-bottom:10px}
+.triage-card .q.stale{color:var(--p2)}
+.triage-card .q.nop{color:var(--accent)}
+.triage-card .desc{font-size:19px;font-weight:700;text-wrap:balance}
+.triage-prios{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:16px 0 8px}
+.triage-prios button{border:none;border-radius:9px;padding:12px 4px;color:#fff;font-weight:800;font-size:15px}
+.triage-prios .lbl{display:block;font-size:10px;font-weight:600;opacity:.9;margin-top:2px}
+.triage-alt{display:flex;gap:7px}
+.triage-alt button{flex:1;border:1px solid var(--line);background:var(--ground);color:var(--ink-soft);border-radius:9px;padding:10px 4px;font-size:13px;font-weight:600}
+.progress{font-size:12px;font-family:var(--mono);color:var(--ink-faint);text-align:center;margin-top:12px}
+
+/* browse filters */
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.filters select,.filters input{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--surface);font-size:14px}
+.filters input{flex:1;min-width:130px}
+.chip-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600}
+.chip.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.group-h{display:flex;align-items:baseline;gap:8px;margin:18px 2px 8px;cursor:pointer}
+.group-h h3{font-size:15px;margin:0}
+.group-h .cnt{font-size:12px;font-family:var(--mono);color:var(--ink-faint)}
+
+/* editor */
+dialog{border:none;border-radius:14px;padding:0;max-width:560px;width:calc(100vw - 30px);background:var(--surface);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(15,22,18,.45)}
+.ed{padding:18px;display:flex;flex-direction:column;gap:12px}
+.ed h3{margin:0;font-size:16px}
+.ed textarea{resize:vertical;min-height:56px}
+.ed .btns{display:flex;gap:8px;justify-content:space-between;margin-top:4px}
+.ed .btns .right{display:flex;gap:8px}
+.ed .btns button{border-radius:8px;padding:9px 16px;font-weight:700;border:1px solid var(--line);background:var(--ground);color:var(--ink-soft)}
+.ed .btns .save{background:var(--accent);border-color:var(--accent);color:#fff}
+.ed .btns .del{color:var(--danger);border-color:var(--line);background:none}
+
+/* setup structure tree */
+.tree{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;font-size:14px}
+.tree .cnt{font-size:11.5px;font-family:var(--mono);color:var(--ink-faint);margin-left:8px}
+.t-realm{font-weight:800;font-size:15px;margin-top:12px;color:var(--accent)}
+.t-realm:first-child{margin-top:0}
+.t-stream{margin-left:18px;margin-top:5px;font-weight:650}
+.t-cat{margin-left:40px;margin-top:2px;color:var(--ink-soft);font-size:13px;position:relative}
+.t-cat::before{content:"·";position:absolute;left:-12px;color:var(--ink-faint)}
+.t-cat.faint{color:var(--ink-faint);font-style:italic}
+.t-name{cursor:pointer;border-radius:5px;padding:1px 5px;margin-left:-5px}
+.t-name:hover,.t-name:focus-visible{background:var(--accent-soft);color:var(--accent)}
+.t-pencil{border:none;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:2px 7px;margin-left:4px;border-radius:5px;opacity:.55}
+.t-pencil:hover{opacity:1;color:var(--accent);background:var(--accent-soft)}
+.t-plus{display:block;border:none;background:none;color:var(--ink-faint);font-size:12px;cursor:pointer;padding:2px 6px;margin-top:2px;border-radius:5px;text-align:left}
+.t-plus:hover{color:var(--accent);background:var(--accent-soft)}
+.t-edit,.t-add{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.t-edit input,.t-add input,.t-edit select{border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:var(--ground);font-size:13px;min-width:0;flex:1;max-width:190px}
+.ind-s{margin-left:18px}
+.ind-c{margin-left:40px}
+.ind-r{margin-top:12px}
+
+/* setup */
+.setup-row{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:6px}
+.setup-row .setup-name{flex:1;font-weight:600;font-size:14px}
+.setup-row .cnt{font-size:12px;font-family:var(--mono);color:var(--ink-faint);min-width:26px;text-align:right}
+.setup-btn{border:1px solid var(--line);background:var(--ground);color:var(--ink-soft);border-radius:7px;padding:4px 11px;font-size:13px;font-weight:600}
+.setup-btn.save{background:var(--accent);border-color:var(--accent);color:#fff}
+.setup-btn.warn{color:var(--danger)}
+.setup-in{flex:1;border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--ground);font-size:14px;min-width:0}
+.setup-row.add{border-style:dashed;background:none}
+
+/* habits */
+.since{font-size:14px;color:var(--ink-soft);margin-top:6px}
+.since b{font-size:16px;color:var(--ink)}
+.since.over b{color:var(--p2)}
+.logdate-wrap{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-faint)}
+.logdate{border:1px solid var(--line);border-radius:7px;padding:4px 6px;background:var(--ground);font-size:13px;color:var(--ink-soft);max-width:130px}
+
+/* quick lists */
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin:0 0 12px;align-items:start}
+.quick{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);padding:12px;margin:0}
+.quick.add-tile{border:1px dashed var(--line);background:none;display:flex;align-items:center;justify-content:center;min-height:86px}
+.q-plus{border:none;background:none;color:var(--ink-faint);font-size:14px;font-weight:700;cursor:pointer;padding:10px 14px;border-radius:8px}
+.q-plus:hover{color:var(--accent);background:var(--accent-soft)}
+.q-head{font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:6px}
+.q-headbtns{margin-left:auto;display:flex;gap:2px}
+.q-name-in{flex:1;border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--ground);font-size:14px;min-width:0}
+.q-sub{color:var(--ink-faint);font-weight:700;font-size:10.5px;margin-left:7px;text-transform:uppercase;letter-spacing:.06em}
+.q-add{display:flex;gap:7px;margin:9px 0 4px;align-items:flex-end}
+.q-add textarea{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--ground);font-size:15px;min-width:0;resize:none;font-family:inherit;line-height:1.4}
+.q-add button{background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px 15px;font-weight:700;white-space:nowrap}
+.q-add button.q-commit{padding:8px 12px;font-size:16px;line-height:1;border-radius:9px}
+.q-item{display:flex;gap:9px;align-items:center;padding:7px 2px;border-top:1px solid var(--line)}
+.q-item input[type=checkbox]{accent-color:var(--accent);width:17px;height:17px;flex-shrink:0;margin:0}
+.q-text{flex:1;font-size:14.5px;min-width:0;overflow-wrap:anywhere}
+.qdone .q-text{text-decoration:line-through;color:var(--ink-faint)}
+.q-btn{border:none;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:3px 8px;border-radius:6px;font-weight:700;flex-shrink:0}
+.q-btn:hover{color:var(--accent);background:var(--accent-soft)}
+
+/* sort direction toggle */
+.sort-btn{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:7px;padding:2px 9px;font-size:14px;cursor:pointer;margin-left:8px;vertical-align:middle;line-height:1.3}
+.sort-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+
+/* category autocomplete */
+.ac-wrap{position:relative}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 22px rgba(0,0,0,.18);z-index:80;max-height:210px;overflow-y:auto;display:none;margin-top:2px}
+.ac-list.open{display:block}
+.ac-item{padding:9px 12px;font-size:14px;cursor:pointer}
+.ac-item:hover{background:var(--accent-soft);color:var(--accent)}
+
+/* banners */
+.banner{display:flex;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--radius);padding:10px 14px;margin:0 0 10px;font-size:14px}
+.banner.warn{background:none;border-color:var(--p2)}
+.banner .grow{flex:1}
+.banner button{border:none;background:var(--accent);color:#fff;border-radius:7px;padding:6px 13px;font-weight:700;white-space:nowrap}
+.banner.warn button{background:var(--p2)}
+.banner button.ghost{background:none;color:var(--ink-faint);font-weight:600}
+
+/* steps checklist */
+.steps{margin-top:8px;display:flex;flex-direction:column;gap:3px}
+.steps label{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;cursor:pointer}
+.steps label.sdone{color:var(--ink-faint);text-decoration:line-through}
+.steps input{margin-top:2px;accent-color:var(--accent)}
+.steps .prog{font-size:11px;font-family:var(--mono);color:var(--ink-faint);margin-top:2px}
+
+/* waiting */
+.pill.pvw{background:none;color:var(--p2);border:1px solid var(--p2)}
+
+/* place row */
+.place-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.place-row select{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--surface);font-size:14px}
+
+/* review */
+.rev-step{font-size:12px;font-family:var(--mono);color:var(--accent);margin:6px 0 2px;font-weight:700}
+.rev-actions{display:flex;gap:8px;margin:16px 0 30px}
+.rev-actions button{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:12px;font-weight:700;color:var(--ink-soft)}
+.rev-actions .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.pick-row{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:6px;cursor:pointer}
+.pick-row input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+.pick-row .pd{flex:1;font-size:14px;font-weight:600}
+.pick-row .pm{display:block;font-size:11.5px;color:var(--ink-faint);font-weight:400;margin-top:1px}
+.triage-prios.mini{margin:10px 0 0}
+.triage-prios.mini button{padding:8px 3px;font-size:13px}
+
+/* habit history dots */
+.dots{display:flex;gap:4px;align-items:center;margin-top:6px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ground);border:1px solid var(--line)}
+.dot.hit{background:var(--accent);border-color:var(--accent)}
+.dots .prog{font-size:11px;font-family:var(--mono);color:var(--ink-faint);margin-left:6px}
+
+/* momentum */
+.mo-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+@media(max-width:560px){.mo-grid{grid-template-columns:1fr}}
+.mo-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+.mo-card h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-faint)}
+.mo-card.wide{grid-column:1/-1}
+.spark{display:flex;align-items:flex-end;gap:4px;height:54px}
+.spark .bar{flex:1;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;opacity:.8}
+.spark .bar.now{opacity:1;background:var(--ink)}
+.spark-x{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-faint);font-family:var(--mono);margin-top:4px}
+.rbar{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12.5px}
+.rbar .lbl{width:92px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rbar .trk{flex:1;background:var(--ground);border-radius:4px;height:10px;overflow:hidden}
+.rbar .fill{height:100%;background:var(--accent);border-radius:4px}
+.rbar .n{font-family:var(--mono);font-size:11px;color:var(--ink-faint);width:26px;text-align:right}
+
+/* effort picker colors */
+.prio-pick button.on.pvS{background:var(--p3)}
+.prio-pick button.on.pvM{background:var(--p4)}
+.prio-pick button.on.pvL{background:var(--p1)}
+
+/* auth gate + sync status */
+#authGate{position:fixed;inset:0;background:var(--ground);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+.auth-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 24px;max-width:360px;width:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 30px rgba(20,35,28,.1)}
+.auth-card h1{font-size:22px;margin:0}
+.auth-card p{margin:0 0 6px;font-size:13.5px;color:var(--ink-soft)}
+.auth-card input{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--ground);font-size:16px}
+.auth-card button{border:1px solid var(--line);background:var(--ground);color:var(--ink-soft);border-radius:9px;padding:11px;font-weight:700}
+.auth-card button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.auth-err{font-size:13px;color:var(--danger);min-height:16px}
+.sync{font-size:12px;font-family:var(--mono);padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--ink-faint);white-space:nowrap}
+.sync.synced{color:var(--accent);border-color:var(--accent)}
+.sync.syncing{color:var(--p2);border-color:var(--p2)}
+.sync.offline{color:var(--danger);border-color:var(--danger)}
+
+/* stats + misc */
+.statrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 6px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.stat .n{font-size:22px;font-weight:800;font-family:var(--mono);letter-spacing:-.02em}
+.stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-weight:700}
+.empty{text-align:center;color:var(--ink-faint);padding:36px 10px;font-size:14px}
+.empty b{color:var(--ink-soft)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--ground);border-radius:999px;padding:9px 20px;font-size:14px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;z-index:99}
+.toast.show{opacity:1}
+.undo-btn{background:none;border:none;color:var(--accent);font-weight:800;margin-left:10px;pointer-events:auto}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.menu{position:absolute;right:14px;top:44px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:50;display:none;flex-direction:column;min-width:210px;overflow:hidden}
+.menu.open{display:flex}
+.menu button{background:none;border:none;text-align:left;padding:11px 16px;font-size:14px;color:var(--ink)}
+.menu button:hover{background:var(--accent-soft)}
+.menu .mhint{font-size:11px;color:var(--ink-faint);padding:2px 16px 10px}
+</style>
+
+<div id="authGate" style="display:none">
+  <div class="auth-card">
+    <h1>Life <span style="color:var(--accent)">Tracker</span></h1>
+    <p>Your private tracker, synced across devices. Sign in to continue.</p>
+    <input id="authEmail" type="email" placeholder="Email" autocomplete="username">
+    <input id="authPw" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="auth-err" id="authErr"></div>
+    <button class="primary" id="authIn">Sign in</button>
+    <button id="authUp">Create account (first time only)</button>
+  </div>
+</div>
+
+<div class="wrap" id="app">
+  <header>
+    <h1>Life <span>Tracker</span></h1>
+    <div class="hdr-actions">
+      <span id="syncDot" class="sync">· local</span>
+      <button id="themeBtn" aria-label="Toggle theme">◐</button>
+      <button id="menuBtn" aria-label="Data menu">Data ▾</button>
+    </div>
+    <div class="menu" id="menu">
+      <button id="expJson">Export backup (JSON)</button>
+      <button id="expCsv">Export spreadsheet (CSV — all fields)</button>
+      <button id="expOrig">Export Life Tracker CSV (original format)</button>
+      <button id="impJson">Import backup…</button>
+      <button id="signOut">Sign out</button>
+      <div class="mhint">Data syncs automatically to your private cloud account. Backups are belt-and-suspenders — export one occasionally.</div>
+    </div>
+  </header>
+
+  <nav id="tabs"></nav>
+
+  <div class="capture" id="capture">
+    <div class="row1">
+      <input type="text" id="capText" placeholder="Brain dump: add anything…" autocomplete="off">
+      <button class="add" id="capAdd" disabled>Add</button>
+      <button class="cap-toggle" id="capToggle" aria-label="Toggle details" aria-expanded="false">▾</button>
+    </div>
+    <div class="cap-detail" id="capDetail">
+      <div class="cap-grid">
+        <div class="field"><label for="capRealm">Realm</label><select id="capRealm"></select></div>
+        <div class="field"><label for="capStream">Stream</label><select id="capStream"></select></div>
+        <div class="field ac-wrap"><label for="capCat">Category</label><input id="capCat" placeholder="e.g. YH Garage" autocomplete="off"><div class="ac-list" id="capCatAC"></div></div>
+      </div>
+      <div class="field"><label>Priority</label>
+        <div class="prio-pick" id="capPrio"></div>
+      </div>
+      <div class="field"><label>Effort</label>
+        <div class="prio-pick" id="capEffort">
+          <button data-e="S" class="pvS">S · under 30 min</button>
+          <button data-e="M" class="pvM">M · an afternoon</button>
+          <button data-e="L" class="pvL">L · big project</button>
+        </div>
+      </div>
+      <div class="cap-grid">
+        <div class="field" style="grid-column:span 2"><label for="capNote">Next concrete action</label><input id="capNote" placeholder="The very next physical step — small and doable"></div>
+        <div class="field"><label for="capDue">Finish by</label><input type="date" id="capDue"></div>
+      </div>
+    </div>
+  </div>
+
+  <main id="view"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileIn" accept=".json" style="display:none">
+
+<dialog id="editor"></dialog>
+
+<script>
+/* ===== data ===== */
+const SEED = []; // seed removed — new accounts start fresh; data lives in Supabase
+const KEY = 'lifetracker.v1';
+const PRIO_LABEL = {1:'Now',2:'Next',3:'Soon',4:'Later',5:'Parked'};
+const localISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const TODAY = () => localISO(new Date());
+const uid = () => 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+function migrate(d){
+  d.settings = d.settings || {};
+  d.settings.realmsOff = d.settings.realmsOff || [];
+  d.pending = d.pending || [];
+  if(d.custom){
+    (d.custom.realm||[]).forEach(r=>d.pending.push({realm:r, stream:null, category:null}));
+    (d.custom.stream||[]).forEach(s=>d.pending.push({realm:null, stream:s, category:null}));
+    (d.custom.category||[]).forEach(c=>d.pending.push({realm:null, stream:null, category:c}));
+    delete d.custom;
+  }
+  if(!d.places){
+    d.places = ['Yellow House','High Creek','Gambier'];
+    d.placeOf = {};
+    new Set(d.items.map(i=>i.category).filter(Boolean)).forEach(c=>{
+      if(/^yh\b|yellow house/i.test(c)) d.placeOf[c]='Yellow House';
+      else if(/gambier/i.test(c)) d.placeOf[c]='Gambier';
+      else if(/high creek/i.test(c)) d.placeOf[c]='High Creek';
+    });
+  }
+  d.placeOf = d.placeOf || {};
+  d.items.forEach(i=>{ if(i.ongoing && i.doneAt && !i.hlog) i.hlog=[i.doneAt]; });
+  if(!d.qlists){
+    d.qlists = [];
+    if(d.quick && d.quick.length) d.qlists.push({id:'ql0', name:'Quick list', items:d.quick});
+  }
+  delete d.quick;
+  if(!d.settings.qlSeeded){
+    // one-time: start with two boxes so the row is full; later deletions are respected
+    for(const name of ['Life','Work']){
+      if(d.qlists.length>=2) break;
+      if(!d.qlists.some(l=>(l.name||'').toLowerCase()===name.toLowerCase()))
+        d.qlists.push({id:'qld'+d.qlists.length, name, items:[]});
+    }
+    d.settings.qlSeeded = true;
+  }
+  if(!d.settings.qlSeeded2){
+    // one-time correction: defaults are Life & Work; drop earlier empty auto-seeds
+    d.qlists = d.qlists.filter(l=>(l.items&&l.items.length) || !['family','quick list'].includes((l.name||'').toLowerCase()));
+    ['Work','Life'].forEach(name=>{
+      const i = d.qlists.findIndex(l=>(l.name||'').toLowerCase()===name.toLowerCase());
+      if(i>=0) d.qlists.unshift(d.qlists.splice(i,1)[0]);
+      else d.qlists.unshift({id:'qld2'+name, name, items:[]});
+    });
+    d.settings.qlSeeded2 = true;
+  }
+  d.qlists.forEach(l=>{ l.items = (l.items||[]).filter(q=>!q.done || !q.doneAt || q.doneAt >= addDays(-3)); });
+  d.settings.place = '';
+  return d;
+}
+let db = migrate(load());
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { items: SEED.map((s,i)=>({
+      id:'seed'+i, added:s.added||'2024-12-02', realm:s.realm||'Life', stream:s.stream||'Misc',
+      category:s.category||'', desc:s.desc, priority:s.priority||null, ongoing:!!s.ongoing,
+      notes:s.notes||'', due:null, status:'open', doneAt:null, snoozedUntil:null, someday:false
+    })) };
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(db)); scheduleSync(); }
+function saveLocalOnly(){ localStorage.setItem(KEY, JSON.stringify(db)); }
+
+const open = () => db.items.filter(i=>i.status==='open' && !i.ongoing && !i.someday);
+const ageDays = i => i.added ? Math.floor((Date.now()-new Date(i.added))/864e5) : 0;
+const isStale = i => (i.priority===1||i.priority===2) && ageDays(i)>30;
+const snoozed = i => i.snoozedUntil && i.snoozedUntil > TODAY();
+const needsTriage = i => i.status==='open' && !i.ongoing && !i.someday && !i.waiting && !snoozed(i) && (i.priority==null || isStale(i));
+function weekStart(){ const d=new Date(); const dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow); return localISO(d); }
+const placeOfItem = i => (i.category && db.placeOf[i.category]) || null;
+const inPlace = i => !db.settings.place || placeOfItem(i)===db.settings.place;
+const EFFORT_LABEL = {S:'⚡ quick', M:'◐ medium', L:'⬤ big'};
+
+/* ===== helpers ===== */
+function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ageLabel(i){
+  const d = ageDays(i);
+  if(d<30) return d+'d';
+  if(d<365) return Math.round(d/30)+'mo';
+  return (d/365).toFixed(1)+'y';
+}
+let toastTimer, undoFn=null;
+function toast(msg, withUndo){
+  const t = document.getElementById('toast');
+  t.innerHTML = esc(msg) + (withUndo?'<button class="undo-btn" id="undoBtn">Undo</button>':'');
+  t.classList.add('show');
+  if(withUndo) document.getElementById('undoBtn').onclick = ()=>{ if(undoFn){undoFn(); undoFn=null;} t.classList.remove('show'); };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), withUndo?5000:2200);
+}
+
+/* ===== vocab for pickers ===== */
+function vocabCounts(field){
+  const c = {};
+  db.items.forEach(i=>{ const v=(i[field]||'').trim(); if(v) c[v]=(c[v]||0)+1; });
+  (db.pending||[]).forEach(p=>{ const v=p[field]; if(v && !(v in c)) c[v]=0; });
+  return c;
+}
+function vocab(field){
+  const c = vocabCounts(field);
+  return Object.keys(c).sort((a,b)=>c[b]-c[a]);
+}
+const inRealm = i => !db.settings.realmsOff.includes(i.realm);
+function catSuggestions(realm, stream, typed){
+  const t = (typed||'').trim().toLowerCase();
+  const seen = new Set();
+  db.items.forEach(i=>{
+    const c = (i.category||'').trim(); if(!c) return;
+    if(realm && (i.realm||'')!==realm) return;
+    if(stream && (i.stream||'')!==stream) return;
+    seen.add(c);
+  });
+  (db.pending||[]).forEach(p=>{
+    if(!p.category) return;
+    if(realm && p.realm!==realm) return;
+    if(stream && p.stream!==stream) return;
+    seen.add(p.category);
+  });
+  let names = [...seen];
+  if(t) names = names.filter(n=>n.toLowerCase().includes(t));
+  return names.sort((a,b)=>a.localeCompare(b)).slice(0,8);
+}
+function bindCatAC(inp, list, getCtx){
+  const refresh = ()=>{
+    const ctx = getCtx();
+    const sugg = catSuggestions(ctx.realm, ctx.stream, inp.value)
+      .filter(n=>n!==inp.value.trim());
+    if(!sugg.length){ list.classList.remove('open'); list.innerHTML=''; return; }
+    list.innerHTML = sugg.map(n=>`<div class="ac-item">${esc(n)}</div>`).join('');
+    list.classList.add('open');
+    list.querySelectorAll('.ac-item').forEach(d=>d.onmousedown = e=>{
+      e.preventDefault();
+      inp.value = d.textContent;
+      list.classList.remove('open');
+    });
+  };
+  inp.addEventListener('input', refresh);
+  inp.addEventListener('focus', refresh);
+  inp.addEventListener('blur', ()=>setTimeout(()=>list.classList.remove('open'), 150));
+  inp.addEventListener('keydown', e=>{ if(e.key==='Escape') list.classList.remove('open'); });
+}
+
+/* ===== capture ===== */
+let capPrioVal = null, capEffortVal = null;
+function initCapture(){
+  const text = document.getElementById('capText');
+  const add = document.getElementById('capAdd');
+  const detail = document.getElementById('capDetail');
+  const toggle = document.getElementById('capToggle');
+  const setCapOpen = v=>{
+    detail.classList.toggle('open', v);
+    toggle.textContent = v ? '▴' : '▾';
+    toggle.setAttribute('aria-expanded', v);
+    if(v) fillPickers();
+  };
+  text.addEventListener('input', ()=>{
+    add.disabled = !text.value.trim();
+    if(text.value.trim() && !detail.classList.contains('open')) setCapOpen(true);
+  });
+  text.addEventListener('keydown', e=>{ if(e.key==='Enter' && text.value.trim()) doAdd(); });
+  toggle.addEventListener('click', ()=>setCapOpen(!detail.classList.contains('open')));
+  add.addEventListener('click', doAdd);
+  bindCatAC(document.getElementById('capCat'), document.getElementById('capCatAC'),
+    ()=>({realm: document.getElementById('capRealm').value, stream: document.getElementById('capStream').value}));
+
+  const pp = document.getElementById('capPrio');
+  pp.innerHTML = [1,2,3,4,5].map(p=>`<button data-p="${p}" class="pv${p}">${p} · ${PRIO_LABEL[p]}</button>`).join('')
+    + `<button data-p="o" class="pvo">Ongoing</button>`;
+  pp.querySelectorAll('button').forEach(b=>b.onclick = ()=>{
+    const v = b.dataset.p;
+    capPrioVal = (capPrioVal===v)?null:v;
+    pp.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x.dataset.p===capPrioVal));
+  });
+  const ep = document.getElementById('capEffort');
+  ep.querySelectorAll('button').forEach(b=>b.onclick = ()=>{
+    capEffortVal = (capEffortVal===b.dataset.e)?null:b.dataset.e;
+    ep.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x.dataset.e===capEffortVal));
+  });
+
+  function doAdd(){
+    const it = {
+      id:uid(), added:TODAY(),
+      realm:document.getElementById('capRealm').value,
+      stream:document.getElementById('capStream').value,
+      category:document.getElementById('capCat').value.trim(),
+      desc:text.value.trim(),
+      priority: capPrioVal && capPrioVal!=='o' ? +capPrioVal : null,
+      ongoing: capPrioVal==='o',
+      next:document.getElementById('capNote').value.trim(),
+      notes:'',
+      effort: capEffortVal,
+      due:document.getElementById('capDue').value||null,
+      status:'open', doneAt:null, snoozedUntil:null, someday:false
+    };
+    db.items.unshift(it); save();
+    text.value=''; document.getElementById('capNote').value=''; document.getElementById('capDue').value='';
+    document.getElementById('capCat').value='';
+    add.disabled = true;
+    capPrioVal=null; pp.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    capEffortVal=null; ep.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    setCapOpen(false);
+    toast('Added' + (it.priority?` · priority ${it.priority}`:' · triage it later'));
+    render();
+    text.focus();
+  }
+}
+function fillPickers(){
+  const r = document.getElementById('capRealm'), s = document.getElementById('capStream');
+  const keepR = r.value, keepS = s.value;
+  r.innerHTML = `<option value="">— unfiled —</option>` + vocab('realm').map(v=>`<option>${esc(v)}</option>`).join('');
+  s.innerHTML = `<option value="">— unfiled —</option>` + vocab('stream').map(v=>`<option>${esc(v)}</option>`).join('');
+  if(keepR) r.value = keepR;
+  if(keepS) s.value = keepS;
+}
+
+/* ===== realm focus chips ===== */
+function realmChipsHTML(){
+  const realms = vocab('realm');
+  const off = db.settings.realmsOff;
+  const anyOff = off.length>0;
+  return `<div class="chip-row" id="realmChips">
+    ${realms.map(r=>{
+      const on = !off.includes(r);
+      return `<button class="chip ${on?'on':''}" data-realm="${esc(r)}">${on?'✓ ':''}${esc(r)}</button>`;
+    }).join('')}
+    ${anyOff?`<button class="chip" data-realm-all>Show all</button>`:''}
+  </div>`;
+}
+function bindRealmChips(v){
+  const box = v.querySelector('#realmChips'); if(!box) return;
+  box.querySelectorAll('[data-realm]').forEach(b=>b.onclick=()=>{
+    const r = b.dataset.realm;
+    const off = db.settings.realmsOff;
+    const idx = off.indexOf(r);
+    if(idx>=0) off.splice(idx,1); else off.push(r);
+    save(); render();
+  });
+  const all = box.querySelector('[data-realm-all]');
+  if(all) all.onclick = ()=>{ db.settings.realmsOff = []; save(); render(); };
+}
+
+/* ===== tabs + browser history ===== */
+let tab = 'today';
+function pushNav(){
+  try{ history.pushState({tab, bNode, reviewStep}, '', '#'+tab); }catch(e){}
+}
+window.addEventListener('popstate', e=>{
+  const s = e.state;
+  if(s && s.tab){ tab = s.tab; bNode = s.bNode || null; reviewStep = s.reviewStep || 1; }
+  else { tab = 'today'; bNode = null; }
+  render(); window.scrollTo(0,0);
+});
+const TABS = [['today','Today'],['browse','Browse'],['tree','Tree'],['habits','Recurring'],['triage','Triage'],['done','Done']];
+function renderTabs(){
+  const n = document.getElementById('tabs');
+  const tn = db.items.filter(i=>needsTriage(i)&&inRealm(i)).length;
+  n.innerHTML = TABS.map(([k,l])=>
+    `<button data-t="${k}" class="${tab===k?'on':''}">${l}${k==='triage'&&tn?` <span class="badge">${tn}</span>`:''}</button>`
+  ).join('');
+  n.querySelectorAll('button').forEach(b=>b.onclick=()=>{ tab=b.dataset.t; pushNav(); render(); window.scrollTo(0,0); });
+}
+
+/* ===== card ===== */
+function cardHTML(i, opts={}){
+  const p = i.ongoing?'o':(i.priority||'n');
+  const pillTxt = i.ongoing?'ONGOING':(i.priority?`${i.priority} ${PRIO_LABEL[i.priority].toUpperCase()}`:'UNSET');
+  const stale = isStale(i);
+  const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+  const steps = (i.steps&&i.steps.length) ? `<div class="steps">${i.steps.map((s,n)=>
+    `<label class="${s.done?'sdone':''}"><input type="checkbox" data-step="${n}" ${s.done?'checked':''} ${i.status!=='open'?'disabled':''}>${esc(s.t)}</label>`).join('')}
+    <span class="prog">${i.steps.filter(s=>s.done).length}/${i.steps.length} steps</span></div>` : '';
+  return `<div class="card pl${p}" data-id="${i.id}">
+    <div class="top">
+      <div class="desc ${i.status==='done'?'done-text':''}">${esc(i.desc)}</div>
+      ${i.waiting?`<span class="pill pvw">⏳ WAITING</span>`:''}
+      <span class="pill pv${p}">${pillTxt}</span>
+    </div>
+    <div class="meta">${esc(path)} · added ${agesc(i)}${stale?' <span class="age-warn">· stale</span>':''}${i.effort?' · '+EFFORT_LABEL[i.effort]:''}${i.due?' · due '+i.due:''}${snoozed(i)?' · 😴 until '+i.snoozedUntil:''}${i.waiting?` · ⏳ ${esc(i.waiting.who)} since ${sinceLabel(daysSince(i.waiting.since))}`:''}${i.doneAt?' · done '+i.doneAt:''}</div>
+    ${i.next?`<div class="next">▸ ${esc(i.next)}</div>`:(opts.askNext&&i.status==='open'?`<div class="next-add"><input placeholder="Break it down — what's the very next physical action?" data-nextadd></div>`:'')}
+    ${steps}
+    ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
+    <div class="acts">
+      ${i.status==='open'?`<button class="do" data-act="done">✓ Done</button>
+      <button data-act="defer">Defer 1w</button>`:`<button data-act="reopen">Reopen</button>`}
+      <button data-act="edit">Edit</button>
+      ${opts.bump&&i.priority>1?`<button data-act="bump" title="Raise to priority ${i.priority-1}">↑ Promote</button>`:''}
+      ${i.status==='open'?`<button data-act="ai">🪄 Break down</button>`:''}
+      ${i.status==='open'&&!i.ongoing?(i.waiting?`<button data-act="resume">▶ Resume</button>`:`<button data-act="wait">⏳ Waiting</button>`):''}
+    </div>
+  </div>`;
+}
+function agesc(i){ return `<span title="${i.added||''}">${agesc2(i)}</span>`; }
+function agesc2(i){ return agesc3(ageLabel(i)); }
+function agesc3(s){ return s+' ago'; }
+function bindCards(root){
+  root.querySelectorAll('.card [data-act]').forEach(b=>{
+    b.onclick = ()=>{
+      const id = b.closest('.card').dataset.id;
+      const i = db.items.find(x=>x.id===id);
+      const act = b.dataset.act;
+      if(act==='done'){ i.status='done'; i.doneAt=TODAY(); save();
+        undoFn = ()=>{ i.status='open'; i.doneAt=null; save(); render(); };
+        toast('Done! 🎉', true); render(); }
+      if(act==='reopen'){ i.status='open'; i.doneAt=null; save(); render(); }
+      if(act==='defer'){ i.snoozedUntil=addDays(7); save(); toast('Deferred a week'); render(); }
+      if(act==='edit'){ openEditor(i); }
+      if(act==='ai'){ openBreakdown(i); }
+      if(act==='wait'){ openWaiting(i); }
+      if(act==='resume'){ i.waiting=null; save(); toast('Back in play'); render(); }
+      if(act==='bump'){
+        i.priority = Math.max(1, (i.priority||5)-1);
+        if(i.priority<=2) i.added = TODAY();
+        save(); toast(`↑ Now priority ${i.priority} · ${PRIO_LABEL[i.priority]}`); render();
+      }
+    };
+  });
+  root.querySelectorAll('.card [data-step]').forEach(cb=>{
+    cb.onchange = ()=>{
+      const i = db.items.find(x=>x.id===cb.closest('.card').dataset.id);
+      i.steps[+cb.dataset.step].done = cb.checked;
+      const nxt = i.steps.find(s=>!s.done);
+      i.next = nxt ? nxt.t : '';
+      save();
+      toast(nxt ? 'Step done — next one promoted' : 'All steps done — mark the whole thing ✓ Done?');
+      render();
+    };
+  });
+}
+function openWaiting(i){
+  const dlg = document.getElementById('editor');
+  dlg.innerHTML = `<div class="ed">
+    <h3>⏳ Waiting on…</h3>
+    <p class="hint" style="margin:0">Handed off? Blocked? Track who has the ball so you can nudge them later.</p>
+    <div class="field"><label>Who / what</label><input id="wWho" placeholder="e.g. Kieran, Kinsol, parts order"></div>
+    <div class="btns"><span></span><div class="right"><button id="wCancel">Cancel</button><button class="save" id="wSave">Save</button></div></div>
+  </div>`;
+  dlg.querySelector('#wCancel').onclick = ()=>dlg.close();
+  dlg.querySelector('#wSave').onclick = ()=>{
+    i.waiting = {who: dlg.querySelector('#wWho').value.trim()||'—', since: TODAY()};
+    save(); dlg.close(); toast('Moved to Waiting'); render();
+  };
+  dlg.showModal();
+  dlg.querySelector('#wWho').focus();
+}
+
+/* ===== views ===== */
+function render(){
+  renderTabs();
+  const v = document.getElementById('view');
+  if(tab==='today') v.innerHTML = viewToday();
+  if(tab==='triage') v.innerHTML = viewTriage();
+  if(tab==='browse') v.innerHTML = viewBrowse();
+  if(tab==='habits') v.innerHTML = viewHabits();
+  if(tab==='done') v.innerHTML = viewDone();
+  if(tab==='tree') v.innerHTML = viewTree();
+  if(tab==='review') v.innerHTML = viewReview();
+  bindCards(v);
+  if(tab==='triage') bindTriage(v);
+  if(tab==='browse') bindBrowse(v);
+  if(tab==='habits'||tab==='today'||tab==='browse') bindHabits(v);
+  if(tab==='today') bindQuick(v);
+  if(tab==='tree') bindTree(v);
+  if(tab==='review') bindReview(v);
+  bindRealmChips(v);
+  bindBanners(v);
+  v.querySelectorAll('[data-nextadd]').forEach(inp=>{
+    const commit = ()=>{
+      const val = inp.value.trim(); if(!val) return;
+      const i = db.items.find(x=>x.id===inp.closest('.card').dataset.id);
+      if(!i || i.next===val) return;
+      i.next = val; save(); toast('Next action set'); render();
+    };
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); });
+    inp.addEventListener('blur', commit);
+  });
+}
+
+function bannersHTML(){
+  let h = '';
+  const lr = db.settings.lastReview;
+  if(!lr || lr <= addDays(-7)){
+    h += `<div class="banner"><span class="grow">🧭 ${lr?`Last weekly review ${sinceLabel(daysSince(lr))}`:'No weekly review yet'} — ten minutes, big payoff.</span><button id="revStart">Start review</button></div>`;
+  }
+  const lb = db.settings.lastBackup, sn = db.settings.backupSnooze;
+  if((!lb || lb <= addDays(-14)) && (!sn || sn <= TODAY())){
+    h += `<div class="banner warn"><span class="grow">💾 ${lb?`Last backup ${sinceLabel(daysSince(lb))}`:'No backup yet'} — your data lives only in this browser.</span><button id="bkNow">Export now</button><button class="ghost" id="bkLater">Later</button></div>`;
+  }
+  return h;
+}
+function bindBanners(v){
+  const go = ()=>{ reviewStep=1; tab='review'; pushNav(); render(); window.scrollTo(0,0); };
+  ['revStart','revStart2'].forEach(id=>{ const b=v.querySelector('#'+id); if(b) b.onclick=go; });
+  v.querySelectorAll('[data-showp]').forEach(b=>b.onclick=()=>{
+    const k = b.dataset.showp;
+    db.settings[k] = !db.settings[k];
+    save(); render();
+  });
+  const sd = v.querySelector('#sortDir');
+  if(sd) sd.onclick = ()=>{
+    db.settings.sortOldest = !db.settings.sortOldest;
+    save(); toast(db.settings.sortOldest?'⇅ Oldest first — rot patrol':'⇅ Newest first'); render();
+  };
+  const bn = v.querySelector('#bkNow');
+  if(bn) bn.onclick = ()=>{ document.getElementById('expJson').click(); render(); };
+  const bl = v.querySelector('#bkLater');
+  if(bl) bl.onclick = ()=>{ db.settings.backupSnooze = addDays(7); save(); render(); };
+}
+/* Quick list: jot → do → done, no filing */
+function qRowHTML(q){
+  return `<div class="q-item ${q.done?'qdone':''}" data-qid="${q.id}">
+    <input type="checkbox" ${q.done?'checked':''} data-qcheck aria-label="Done">
+    <span class="q-text">${esc(q.text)}</span>
+    ${q.done?'':'<button class="q-btn" data-qpromote title="Turn into a full tracked item">File ↗</button>'}
+    <button class="q-btn" data-qdel aria-label="Delete">✕</button>
+  </div>`;
+}
+let qDrafts = {}, qRename = null, qAddOpen = false;
+function findQuick(id){
+  for(const l of db.qlists){
+    const idx = l.items.findIndex(q=>q.id===id);
+    if(idx>=0) return {l, idx, q:l.items[idx]};
+  }
+  return null;
+}
+function quickBoxHTML(l){
+  const undone = l.items.filter(q=>!q.done);
+  const doneRecent = l.items.filter(q=>q.done);
+  const draft = qDrafts[l.id]||'';
+  const naming = qRename===l.id;
+  return `<div class="quick" data-ql="${l.id}">
+    <div class="q-head">${naming
+      ? `<input class="q-name-in" value="${esc(l.name)}" aria-label="List name"><button class="q-btn" data-qact="namesave">Save</button>`
+      : `⚡ ${esc(l.name)}
+         <span class="q-headbtns"><button class="q-btn" data-qact="rename" aria-label="Rename list">✎</button>${l.items.length===0?`<button class="q-btn" data-qact="dellist" aria-label="Delete list">✕</button>`:''}</span>`}
+    </div>
+    <div class="q-add">
+      <textarea class="q-ta" rows="${Math.min(6, Math.max(1, draft.split('\n').length))}" placeholder="One per line, ⏎ for the next…">${esc(draft)}</textarea>
+      <button class="q-commit" data-qact="commit" aria-label="Add these lines" title="Add these lines">✓</button>
+    </div>
+    ${undone.map(qRowHTML).join('')}${doneRecent.map(qRowHTML).join('')}
+  </div>`;
+}
+function quickHTML(){
+  return `<div class="quick-grid">
+    ${db.qlists.map(quickBoxHTML).join('')}
+    <div class="quick add-tile">${qAddOpen
+      ? `<div class="q-add" style="width:100%"><input class="q-name-in" id="qlNewName" placeholder="List name (Work, Family…)"><button data-qact="addlist">Add</button></div>`
+      : `<button class="q-plus" data-qact="addstart">＋ New quick list</button>`}
+    </div>
+  </div>`;
+}
+function bindQuick(v){
+  if(!v.querySelector('.quick-grid')) return;
+  v.querySelectorAll('.quick[data-ql]').forEach(box=>{
+    const lid = box.dataset.ql;
+    const l = db.qlists.find(x=>x.id===lid);
+    const ta = box.querySelector('.q-ta');
+    ta.addEventListener('input', ()=>{
+      qDrafts[lid] = ta.value;
+      ta.rows = Math.min(6, Math.max(1, ta.value.split('\n').length));
+    });
+    const commit = ()=>{
+      const lines = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      if(!lines.length) return;
+      lines.reverse().forEach(t=>l.items.unshift({id:uid(), text:t, added:TODAY(), done:false, doneAt:null}));
+      delete qDrafts[lid];
+      save(); toast(lines.length===1?'Added':`Added ${lines.length} things`); render();
+    };
+    ta.addEventListener('keydown', e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) commit(); });
+    box.querySelectorAll('[data-qact]').forEach(b=>b.onclick=()=>{
+      const act = b.dataset.qact;
+      if(act==='commit') commit();
+      if(act==='rename'){
+        qRename = lid; render();
+        const inp = document.querySelector(`.quick[data-ql="${lid}"] .q-name-in`);
+        if(inp){ inp.focus(); inp.select(); }
+      }
+      if(act==='namesave'){
+        const nv = box.querySelector('.q-name-in').value.trim();
+        if(nv) l.name = nv;
+        qRename = null; save(); render();
+      }
+      if(act==='dellist'){
+        db.qlists = db.qlists.filter(x=>x.id!==lid);
+        save(); toast('List removed'); render();
+      }
+    });
+    const nameIn = box.querySelector('.q-name-in');
+    if(nameIn) nameIn.addEventListener('keydown', e=>{
+      if(e.key==='Enter') box.querySelector('[data-qact="namesave"]').click();
+      if(e.key==='Escape'){ qRename=null; render(); }
+    });
+  });
+  // add-list tile
+  v.querySelectorAll('.add-tile [data-qact]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.qact==='addstart'){
+      qAddOpen = true; render();
+      const inp = document.getElementById('qlNewName'); if(inp) inp.focus();
+    }
+    if(b.dataset.qact==='addlist'){
+      const nv = document.getElementById('qlNewName').value.trim();
+      if(!nv) return;
+      db.qlists.push({id:uid(), name:nv, items:[]});
+      qAddOpen = false; save(); toast(`"${nv}" list added`); render();
+    }
+  });
+  const newNameIn = v.querySelector('#qlNewName');
+  if(newNameIn) newNameIn.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ const b=v.querySelector('[data-qact="addlist"]'); if(b) b.click(); }
+    if(e.key==='Escape'){ qAddOpen=false; render(); }
+  });
+  // item actions (searched across all lists)
+  v.querySelectorAll('[data-qcheck]').forEach(cb=>cb.onchange=()=>{
+    const f = findQuick(cb.closest('.q-item').dataset.qid); if(!f) return;
+    f.q.done = cb.checked; f.q.doneAt = cb.checked ? TODAY() : null;
+    save(); render();
+  });
+  v.querySelectorAll('[data-qdel]').forEach(b=>b.onclick=()=>{
+    const f = findQuick(b.closest('.q-item').dataset.qid); if(!f) return;
+    f.l.items.splice(f.idx,1); save();
+    undoFn = ()=>{ f.l.items.splice(f.idx,0,f.q); save(); render(); };
+    toast('Deleted', true); render();
+  });
+  v.querySelectorAll('[data-qpromote]').forEach(b=>b.onclick=()=>{
+    const f = findQuick(b.closest('.q-item').dataset.qid); if(!f) return;
+    // a list named after a realm pre-files its promotions there
+    const realmMatch = vocab('realm').find(r=>r.toLowerCase()===f.l.name.trim().toLowerCase());
+    const it = {id:uid(), added:TODAY(), realm:realmMatch||'', stream:'', category:'', desc:f.q.text,
+      priority:null, ongoing:false, next:'', notes:'', due:null, status:'open',
+      doneAt:null, snoozedUntil:null, someday:false, effort:null};
+    db.items.unshift(it);
+    f.l.items.splice(f.idx,1);
+    save(); render();
+    openEditor(it);
+  });
+}
+function viewToday(){
+  const o = open();
+  const wk = weekStart();
+  const tn = db.items.filter(i=>needsTriage(i)&&inRealm(i)).length;
+  const picksAll = db.items.filter(i=>i.week===wk && !i.ongoing);
+  const picksDone = picksAll.filter(i=>i.status==='done').length;
+  const picks = picksAll.filter(i=>i.status==='open' && !i.someday && inRealm(i) && inPlace(i) && !i.waiting);
+  const pickIds = new Set(picksAll.map(i=>i.id));
+  const dueSoon = o.filter(i=>inRealm(i) && i.due && i.due <= addDays(14) && !snoozed(i) && !pickIds.has(i.id)).sort((a,b)=>a.due<b.due?-1:1);
+  const oldestMode = !!db.settings.sortOldest;
+  const byAdded = (a,b)=>{
+    const d = (a.added||'') < (b.added||'') ? -1 : (a.added||'') > (b.added||'') ? 1 : 0;
+    return oldestMode ? d : -d;
+  };
+  const dirLabel = oldestMode ? 'oldest first' : 'newest first';
+  const actionable = i => inRealm(i) && !snoozed(i) && !i.waiting && !pickIds.has(i.id);
+  const p1 = o.filter(i=>actionable(i) && i.priority===1).sort(byAdded);
+  const p2all = o.filter(i=>actionable(i) && i.priority===2).sort(byAdded);
+  const p3all = o.filter(i=>actionable(i) && i.priority===3).sort(byAdded);
+  const shownIds = new Set([...pickIds, ...p1.map(i=>i.id),
+    ...(db.settings.showP2?p2all:[]).map(i=>i.id), ...(db.settings.showP3?p3all:[]).map(i=>i.id)]);
+  const wins = o.filter(i=>inRealm(i) && inPlace(i) && !snoozed(i) && !i.waiting && i.effort==='S' && !shownIds.has(i.id))
+    .sort((a,b)=>((a.priority||9)-(b.priority||9)) || newestFirst(a,b)).slice(0,5);
+  const waiting = o.filter(i=>i.waiting && inRealm(i)).sort((a,b)=>(a.waiting.since||'')<(b.waiting.since||'')?-1:1).slice(0,6);
+
+  let h = bannersHTML();
+  h += quickHTML();
+  h += `<div class="place-row"><span style="flex:1"></span><button class="chip" id="revStart2">🧭 Weekly review</button></div>`;
+  h += realmChipsHTML();
+  h += `<div class="statrow">
+    <div class="stat"><div class="n">${o.length}</div><div class="l">Open items</div></div>
+    <div class="stat"><div class="n">${tn}</div><div class="l">Need triage</div></div>
+    <div class="stat"><div class="n">${db.items.filter(i=>i.status==='done'&&i.doneAt>=addDays(-7)).length + db.qlists.reduce((n,l)=>n+l.items.filter(q=>q.done&&q.doneAt>=addDays(-7)).length,0)}</div><div class="l">Done this week</div></div>
+  </div>`;
+  if(picksAll.length){
+    h += `<h2>This week's picks <b>· ${picksDone} of ${picksAll.length} done</b></h2>`;
+    h += picks.length ? picks.map(i=>cardHTML(i,{askNext:true})).join('')
+      : `<div class="empty">${picksDone===picksAll.length?'<b>Week complete. 🏆</b> Review early or just coast.':'Remaining picks are filtered out by the realm checkboxes.'}</div>`;
+  }
+  if(dueSoon.length){
+    h += `<h2>Due in the next two weeks</h2>` + dueSoon.map(i=>cardHTML(i)).join('');
+  }
+  const lapsed = db.items.filter(i=>i.ongoing && i.status==='open' && inRealm(i) && inPlace(i) && habitUrgency(i)>=1)
+    .sort((a,b)=>habitUrgency(b)-habitUrgency(a)).slice(0,4);
+  if(lapsed.length){
+    h += `<h2>Recurring — slipping</h2>` + lapsed.map(habitCardHTML).join('');
+  }
+  h += `<h2>🔥 Now <b>· all ${p1.length} priority-1 task${p1.length===1?'':'s'} · ${dirLabel}</b>
+    <button id="sortDir" class="sort-btn" title="Flip to ${oldestMode?'newest':'oldest'} first" aria-label="Reverse sort order">⇅</button></h2>`;
+  h += p1.length ? p1.map(i=>cardHTML(i,{askNext:true})).join('')
+    : `<div class="empty"><b>No priority-1 tasks in these realms.</b><br>Promote something below, or enjoy the calm.</div>`;
+  h += `<div class="chip-row" style="margin-top:14px">
+    <span class="hint" style="margin:0 4px 0 2px">Coming up:</span>
+    <button class="chip ${db.settings.showP2?'on':''}" data-showp="showP2">2 · Next (${p2all.length})</button>
+    <button class="chip ${db.settings.showP3?'on':''}" data-showp="showP3">3 · Soon (${p3all.length})</button>
+  </div>`;
+  if(db.settings.showP2 && p2all.length){
+    h += `<h2>Next <b>· all ${p2all.length} priority-2 · ${dirLabel}</b></h2>`;
+    h += p2all.map(i=>cardHTML(i,{bump:true})).join('');
+  }
+  if(db.settings.showP3 && p3all.length){
+    h += `<h2>Soon <b>· all ${p3all.length} priority-3 · ${dirLabel}</b></h2>`;
+    h += p3all.map(i=>cardHTML(i,{bump:true})).join('');
+  }
+  if(wins.length){
+    h += `<h2>⚡ Quick wins <b>· got 20 minutes?</b></h2>` + wins.map(i=>cardHTML(i)).join('');
+  }
+  if(waiting.length){
+    h += `<h2>⏳ Waiting on <b>· oldest first — time to nudge?</b></h2>` + waiting.map(i=>cardHTML(i)).join('');
+  }
+  return h;
+}
+function addDays(n){ const d=new Date(); d.setDate(d.getDate()+n); return localISO(d); }
+
+/* Triage: one decision at a time */
+let triageQueue = null;
+function viewTriage(){
+  const q = db.items.filter(i=>needsTriage(i)&&inRealm(i));
+  // unprioritized first (newest first), then stale (oldest first)
+  q.sort((a,b)=>{
+    const an=a.priority==null, bn=b.priority==null;
+    if(an!==bn) return an?-1:1;
+    if(an) return (b.added||'')<(a.added||'')?-1:1;
+    return (a.added||'')<(b.added||'')?-1:1;
+  });
+  triageQueue = q;
+  if(!q.length) return realmChipsHTML() + `<div class="empty"><b>Triage inbox is clear. 🌊</b><br>Every open item in the realms you've included has a believable priority.</div>`;
+  const i = q[0];
+  const reason = i.priority==null
+    ? `<div class="q nop">No priority · added ${ageLabel(i)} ago</div>`
+    : `<div class="q stale">Marked "${PRIO_LABEL[i.priority]}" ${ageLabel(i)} ago — still true?</div>`;
+  const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+  return realmChipsHTML() + `<p class="hint">One item, one decision. Be honest: if you haven't touched a "Now" in months, it isn't a Now.</p>
+  <div class="triage-card" data-id="${i.id}">
+    ${reason}
+    <div class="desc">${esc(i.desc)}</div>
+    <div class="meta">${esc(path)}</div>
+    ${i.next?`<div class="next">▸ ${esc(i.next)}</div>`:''}
+    ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
+    <div class="triage-prios">
+      ${[1,2,3,4,5].map(p=>`<button data-p="${p}" style="background:var(--p${p})">${p}<span class="lbl">${PRIO_LABEL[p]}</span></button>`).join('')}
+    </div>
+    <div class="triage-alt">
+      <button data-alt="someday">💤 Someday</button>
+      <button data-alt="wait">⏳ Waiting</button>
+      <button data-alt="done">✓ Done</button>
+      <button data-alt="delete">🗑 Let go</button>
+      <button data-alt="skip">Skip →</button>
+    </div>
+    <div class="progress">${triageQueue.length} to review</div>
+  </div>`;
+}
+let triageSkips = new Set();
+function bindTriage(v){
+  const card = v.querySelector('.triage-card'); if(!card) return;
+  const i = db.items.find(x=>x.id===card.dataset.id);
+  card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{
+    i.priority = +b.dataset.p; i.added = i.priority<=2 ? TODAY() : i.added; save();
+    toast(`Set to ${b.dataset.p} · ${PRIO_LABEL[b.dataset.p]}`); render();
+  });
+  card.querySelectorAll('[data-alt]').forEach(b=>b.onclick=()=>{
+    const a = b.dataset.alt;
+    if(a==='wait'){ openWaiting(i); return; }
+    if(a==='someday'){ i.someday=true; save(); toast('Moved to Someday'); }
+    if(a==='done'){ i.status='done'; i.doneAt=TODAY(); save(); toast('Done! 🎉'); }
+    if(a==='delete'){
+      const idx = db.items.indexOf(i); db.items.splice(idx,1); save();
+      undoFn = ()=>{ db.items.splice(idx,0,i); save(); render(); };
+      toast('Deleted', true);
+    }
+    if(a==='skip'){
+      db.items.splice(db.items.indexOf(i),1); db.items.push(i); // rotate to back
+    }
+    render();
+  });
+}
+
+/* Weekly review */
+let reviewStep = 1;
+function viewReview(){
+  const wk = weekStart();
+  if(reviewStep===1){
+    const since = db.settings.lastReview || addDays(-7);
+    const doneItems = db.items.filter(i=>i.status==='done' && i.doneAt && i.doneAt>=since)
+      .sort((a,b)=>(b.doneAt||'')<(a.doneAt||'')?-1:1);
+    return `<div class="rev-step">WEEKLY REVIEW · STEP 1 OF 3</div>
+    <h2>The week that was</h2>
+    <p class="hint">${doneItems.length
+      ? `${doneItems.length} thing${doneItems.length===1?'':'s'} finished since your last review. Look at the list. Let it count.`
+      : `Nothing marked done since your last review. No guilt — this week the goal is small wins.`}</p>
+    ${doneItems.slice(0,15).map(i=>cardHTML(i)).join('')}
+    <div class="rev-actions"><button data-rev="exit">Exit</button><button class="primary" data-rev="2">Next: honest sweep →</button></div>`;
+  }
+  if(reviewStep===2){
+    const all = db.items.filter(i=>needsTriage(i)&&inRealm(i));
+    all.sort((a,b)=>{
+      const an=a.priority==null, bn=b.priority==null;
+      if(an!==bn) return an?-1:1;
+      return (a.added||'')<(b.added||'')?-1:1;
+    });
+    const q = all.slice(0,6);
+    return `<div class="rev-step">WEEKLY REVIEW · STEP 2 OF 3</div>
+    <h2>Honest sweep <b>· ${all.length} need a decision</b></h2>
+    <p class="hint">${all.length?'Decide a few right now — real priority, Someday, or let it go. No pressure to clear them all.':'Nothing needs triage. Beautiful.'}</p>
+    ${q.map(i=>{
+      const path=[i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+      return `<div class="card pl${i.priority||'n'}" data-id="${i.id}">
+        <div class="top"><div class="desc">${esc(i.desc)}</div>
+        <span class="pill pv${i.priority||'n'}">${i.priority?`${i.priority} ${PRIO_LABEL[i.priority].toUpperCase()}`:'UNSET'}</span></div>
+        <div class="meta">${esc(path)} · added ${ageLabel(i)} ago</div>
+        <div class="triage-prios mini">
+          ${[1,2,3,4,5].map(p=>`<button data-rp="${p}" style="background:var(--p${p})">${p}<span class="lbl">${PRIO_LABEL[p]}</span></button>`).join('')}
+        </div>
+        <div class="acts" style="margin-top:7px"><button data-ralt="someday">💤 Someday</button><button data-ralt="delete" class="warn">🗑 Let it go</button></div>
+      </div>`;
+    }).join('')}
+    <div class="rev-actions"><button data-rev="1">← Back</button><button class="primary" data-rev="3">Next: pick your week →</button></div>`;
+  }
+  // step 3
+  const cands = open().filter(i=>inRealm(i) && !snoozed(i) && !i.waiting && (i.week===wk || (i.priority!=null && i.priority<=3)));
+  cands.sort((a,b)=>{
+    if((b.week===wk)!==(a.week===wk)) return b.week===wk?1:-1;
+    if((a.priority||9)!==(b.priority||9)) return (a.priority||9)-(b.priority||9);
+    return (a.added||'')<(b.added||'')?-1:1;
+  });
+  const nPicked = cands.filter(i=>i.week===wk).length;
+  return `<div class="rev-step">WEEKLY REVIEW · STEP 3 OF 3</div>
+  <h2>Pick your week <b>· ${nPicked} picked</b></h2>
+  <p class="hint">Choose 5–10 things you actually intend to touch this week. They'll lead your Today view. Picking fewer is braver than picking more.</p>
+  ${cands.slice(0,40).map(i=>{
+    const path=[i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+    return `<label class="pick-row"><input type="checkbox" data-pick="${i.id}" ${i.week===wk?'checked':''}>
+      <span class="pd">${esc(i.desc)}<span class="pm">${esc(path)} · ${i.priority?PRIO_LABEL[i.priority]:'unset'} · added ${ageLabel(i)} ago${i.effort?' · '+EFFORT_LABEL[i.effort]:''}</span></span></label>`;
+  }).join('')}
+  <div class="rev-actions"><button data-rev="2">← Back</button><button class="primary" data-rev="finish">Finish review ✓</button></div>`;
+}
+function bindReview(v){
+  v.querySelectorAll('[data-rev]').forEach(b=>b.onclick=()=>{
+    const r = b.dataset.rev;
+    if(r==='exit'){ tab='today'; pushNav(); render(); return; }
+    if(r==='finish'){
+      db.settings.lastReview = TODAY(); save();
+      tab='today'; pushNav(); toast('Review done — clear head, short list 🌊'); render(); window.scrollTo(0,0); return;
+    }
+    reviewStep = +r; pushNav(); render(); window.scrollTo(0,0);
+  });
+  v.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{
+    const i = db.items.find(x=>x.id===b.closest('.card').dataset.id);
+    i.priority = +b.dataset.rp; if(i.priority<=2) i.added = TODAY();
+    save(); render();
+  });
+  v.querySelectorAll('[data-ralt]').forEach(b=>b.onclick=()=>{
+    const i = db.items.find(x=>x.id===b.closest('.card').dataset.id);
+    if(b.dataset.ralt==='someday'){ i.someday=true; save(); render(); }
+    else{
+      const idx = db.items.indexOf(i); db.items.splice(idx,1); save();
+      undoFn = ()=>{ db.items.splice(idx,0,i); save(); render(); };
+      toast('Deleted', true); render();
+    }
+  });
+  v.querySelectorAll('[data-pick]').forEach(cb=>cb.onchange=()=>{
+    const i = db.items.find(x=>x.id===cb.dataset.pick);
+    i.week = cb.checked ? weekStart() : null;
+    save();
+    const n = db.items.filter(x=>x.week===weekStart()&&x.status==='open').length;
+    const hdr = v.querySelector('h2 b'); if(hdr) hdr.textContent = `· ${n} picked`;
+  });
+}
+
+/* Browse */
+let bFilter = {realm:'', q:'', prio:'', mode:'active'};
+let bNode = null; // set by tapping the Setup structure tree
+function nodeMatch(val, want){
+  if(want==null) return true;
+  if(want.startsWith('(no ')) return !val;
+  return (val||'')===want;
+}
+function viewBrowse(){
+  const realms = vocab('realm');
+  let items;
+  if(bNode){
+    items = db.items.filter(i=>i.status==='open'
+      && nodeMatch(i.realm,bNode.realm) && nodeMatch(i.stream,bNode.stream) && nodeMatch(i.category,bNode.cat));
+  } else {
+    items = db.items.filter(i=>i.status==='open' && !i.ongoing && (
+      bFilter.mode==='someday' ? i.someday :
+      bFilter.mode==='waiting' ? !!i.waiting :
+      (!i.someday && !i.waiting)));
+  }
+  if(db.settings.place) items = items.filter(inPlace);
+  if(bFilter.realm) items = items.filter(i=>i.realm===bFilter.realm);
+  if(bFilter.prio) items = items.filter(i=>String(i.priority||'n')===bFilter.prio);
+  if(bFilter.q){ const q=bFilter.q.toLowerCase(); items = items.filter(i=>(i.desc+' '+(i.notes||'')+' '+(i.category||'')).toLowerCase().includes(q)); }
+  // group by stream
+  const groups = {};
+  items.forEach(i=>{ const k=(i.realm||'')+' › '+(i.stream||''); (groups[k]=groups[k]||[]).push(i); });
+  Object.values(groups).forEach(g=>g.sort((a,b)=>(a.priority||9)-(b.priority||9)));
+  let h = `<div class="filters">
+    <select id="bRealm"><option value="">All realms</option>${realms.map(r=>`<option ${bFilter.realm===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
+    <select id="bPrio"><option value="">All priorities</option>${[1,2,3,4,5].map(p=>`<option value="${p}" ${bFilter.prio==p?'selected':''}>${p} · ${PRIO_LABEL[p]}</option>`).join('')}<option value="n" ${bFilter.prio==='n'?'selected':''}>Unset</option></select>
+    <input id="bQ" placeholder="Search…" value="${esc(bFilter.q)}">
+  </div>
+  <div class="chip-row">
+    ${bNode?`<button class="chip on" id="bNodeClear">📌 ${esc([bNode.realm,bNode.stream,bNode.cat].filter(Boolean).join(' › '))} · ${items.length} ✕</button>`:`
+    <button class="chip ${bFilter.mode==='active'?'on':''}" data-mode="active">Active</button>
+    <button class="chip ${bFilter.mode==='someday'?'on':''}" data-mode="someday">💤 Someday</button>
+    <button class="chip ${bFilter.mode==='waiting'?'on':''}" data-mode="waiting">⏳ Waiting</button>`}
+  </div>`;
+  const keys = Object.keys(groups).sort();
+  if(!keys.length) h += `<div class="empty">Nothing matches.</div>`;
+  keys.forEach(k=>{
+    h += `<div class="group-h"><h3>${esc(k)}</h3><span class="cnt">${groups[k].length}</span></div>`;
+    h += groups[k].map(i=>i.ongoing ? habitCardHTML(i) : cardHTML(i)).join('');
+  });
+  return h;
+}
+function bindBrowse(v){
+  v.querySelector('#bRealm').onchange = e=>{ bFilter.realm=e.target.value; render(); };
+  v.querySelector('#bPrio').onchange = e=>{ bFilter.prio=e.target.value; render(); };
+  const q = v.querySelector('#bQ');
+  q.oninput = ()=>{ bFilter.q=q.value; clearTimeout(q._t); q._t=setTimeout(render,250); };
+  q.onkeydown = e=>{ if(e.key==='Enter'){ bFilter.q=q.value; render(); } };
+  v.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ bFilter.mode=b.dataset.mode; render(); });
+  const nc = v.querySelector('#bNodeClear');
+  if(nc) nc.onclick = ()=>{ bNode = null; pushNav(); render(); };
+}
+
+/* Habits */
+function daysSince(d){ return d ? Math.max(0, Math.floor((new Date(TODAY()+'T12:00') - new Date(d+'T12:00'))/864e5)) : null; }
+function sinceLabel(n){
+  if(n==null) return 'never logged';
+  if(n===0) return 'today';
+  if(n===1) return 'yesterday';
+  if(n<21) return n+' days ago';
+  if(n<70) return Math.round(n/7)+' weeks ago';
+  return Math.round(n/30)+' months ago';
+}
+function habitUrgency(i){
+  const n = daysSince(i.doneAt);
+  if(i.every) return n==null ? 99 : n/i.every;   // 1.0 = exactly at target
+  return n==null ? 1.05 : n/45;                  // no target: nag after ~6 weeks
+}
+function habitPill(i){
+  const n = daysSince(i.doneAt);
+  if(n==null) return `<span class="pill pvn">NO LOG YET</span>`;
+  if(i.every && n>i.every) return `<span class="pill pv2">${n-i.every}d OVERDUE</span>`;
+  return `<span class="pill pvo">OK</span>`;
+}
+function habitDotsHTML(i){
+  const logs = i.hlog||[];
+  if(i.every){
+    const dots = Array.from({length:8},(_,idx)=>{
+      const k = 7-idx;
+      const from = addDays(-(k+1)*i.every), to = addDays(-k*i.every);
+      return `<span class="dot ${logs.some(d=>d>from&&d<=to)?'hit':''}"></span>`;
+    }).join('');
+    const hits = Array.from({length:8},(_,k)=>logs.some(d=>d>addDays(-(k+1)*i.every)&&d<=addDays(-k*i.every))).filter(Boolean).length;
+    return `<div class="dots">${dots}<span class="prog">${hits}/8 recent cycles</span></div>`;
+  }
+  const n90 = logs.filter(d=>d>=addDays(-90)).length;
+  return n90 ? `<div class="dots"><span class="prog">logged ${n90}× in the last 90 days</span></div>` : '';
+}
+function habitCardHTML(i){
+  const n = daysSince(i.doneAt);
+  const over = i.every && n!=null && n>i.every;
+  const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+  const target = i.every ? ` · aim: every ${i.every}d` : '';
+  return `<div class="card ${over||n==null?'pl2':'plo'}" data-id="${i.id}">
+    <div class="top"><div class="desc">${esc(i.desc)}</div>${habitPill(i)}</div>
+    <div class="meta">${esc(path)}${target}</div>
+    <div class="since ${over?'over':''}">${n==null?'Never logged — when did you last do this?':`Last done <b>${sinceLabel(n)}</b> · ${i.doneAt}`}</div>
+    ${habitDotsHTML(i)}
+    ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
+    <div class="acts">
+      <button class="do" data-act="log">✓ Did it today</button>
+      <label class="logdate-wrap">or on <input type="date" class="logdate" max="${TODAY()}"></label>
+      <button data-act="edit">Edit</button>
+    </div>
+  </div>`;
+}
+function logHabit(i, date){
+  i.hlog = i.hlog||[];
+  if(!i.hlog.includes(date)) i.hlog.push(date);
+  i.hlog.sort();
+  if(i.hlog.length>400) i.hlog = i.hlog.slice(-400);
+  i.doneAt = i.hlog[i.hlog.length-1];
+  save();
+}
+function viewHabits(){
+  const h = db.items.filter(i=>i.ongoing && i.status==='open')
+    .sort((a,b)=>habitUrgency(b)-habitUrgency(a));
+  let out = `<p class="hint">Recurring upkeep — these never "finish," they just need doing regularly. Most-neglected first. Set a target cadence in Edit (e.g. every 7 days) to get overdue flags.</p>`;
+  if(!h.length) return out + `<div class="empty">Nothing recurring yet. Mark an item "Ongoing" when capturing it.</div>`;
+  return out + h.map(habitCardHTML).join('');
+}
+function bindHabits(v){
+  v.querySelectorAll('[data-act="log"]').forEach(b=>b.onclick=()=>{
+    const i = db.items.find(x=>x.id===b.closest('.card').dataset.id);
+    logHabit(i, TODAY()); toast('Logged 💪'); render();
+  });
+  v.querySelectorAll('.logdate').forEach(inp=>inp.onchange=()=>{
+    if(!inp.value) return;
+    const i = db.items.find(x=>x.id===inp.closest('.card').dataset.id);
+    logHabit(i, inp.value); toast(`Logged for ${inp.value}`); render();
+  });
+}
+
+/* Done + momentum */
+function momentumHTML(){
+  const wk0 = weekStart();
+  const weekStarts = Array.from({length:8},(_,idx)=>{
+    const d = new Date(wk0+'T12:00'); d.setDate(d.getDate()-7*(7-idx)); return localISO(d);
+  });
+  const counts = weekStarts.map((w,idx)=>{
+    const end = idx<7 ? weekStarts[idx+1] : addDays(1);
+    return db.items.filter(i=>i.status==='done' && i.doneAt && i.doneAt>=w && i.doneAt<end).length;
+  });
+  const mx = Math.max(1,...counts);
+  const added30 = db.items.filter(i=>i.added && i.added>=addDays(-30)).length;
+  const done30 = db.items.filter(i=>i.status==='done' && i.doneAt && i.doneAt>=addDays(-30)).length;
+  const byRealm = {};
+  open().forEach(i=>{ const r=i.realm||'—'; byRealm[r]=(byRealm[r]||0)+1; });
+  const rm = Math.max(1,...Object.values(byRealm),1);
+  const oldest = open().slice().sort((a,b)=>(a.added||'9999')<(b.added||'9999')?-1:1)[0];
+  return `<div class="mo-grid">
+    <div class="mo-card"><h4>Done per week</h4>
+      <div class="spark">${counts.map((c,idx)=>`<div class="bar ${idx===7?'now':''}" style="height:${Math.max(4,Math.round(c/mx*100))}%" title="${c} done"></div>`).join('')}</div>
+      <div class="spark-x"><span>8 wk ago</span><span>this wk</span></div></div>
+    <div class="mo-card"><h4>Last 30 days</h4>
+      <div style="font-size:14px">Added <b style="font-family:var(--mono)">${added30}</b> · Finished <b style="font-family:var(--mono)">${done30}</b></div>
+      <div class="hint" style="margin:4px 0 0">${done30>=added30?'Backlog shrinking — keep it rolling 📉':'Backlog growing — finish more or capture less 📈'}</div>
+      ${oldest?`<div style="margin-top:8px;font-size:12.5px;color:var(--ink-faint)">Oldest open: “${esc(oldest.desc.slice(0,42))}” · ${ageLabel(oldest)} old</div>`:''}</div>
+    <div class="mo-card wide"><h4>Open items by realm</h4>
+      ${Object.entries(byRealm).sort((a,b)=>b[1]-a[1]).map(([r,n])=>
+        `<div class="rbar"><span class="lbl">${esc(r)}</span><div class="trk"><div class="fill" style="width:${Math.round(n/rm*100)}%"></div></div><span class="n">${n}</span></div>`).join('')}</div>
+  </div>`;
+}
+function viewDone(){
+  const d = db.items.filter(i=>i.status==='done' && !i.ongoing).sort((a,b)=>(b.doneAt||'')<(a.doneAt||'')?-1:1);
+  let h = momentumHTML();
+  if(!d.length) return h + `<div class="empty">Nothing completed yet — go make this list grow.</div>`;
+  return h + `<p class="hint">${d.length} things you actually finished. Revisit when you feel like you're getting nowhere.</p>`
+    + d.map(i=>cardHTML(i)).join('');
+}
+
+/* Tree: hierarchy view + structure editor */
+let treeEdit = null; // {type:'realm'|'stream'|'cat', realm, stream, name, count}
+let treeAdd = null;  // {type:'realm'|'stream'|'cat', realm, stream}
+const isPseudo = n => typeof n==='string' && n.startsWith('(no ');
+
+function buildTree(){
+  const tree = {};
+  const ensure = (r,s,c)=>{
+    tree[r] = tree[r]||{n:0, streams:{}};
+    if(s==null) return;
+    const st = tree[r].streams;
+    st[s] = st[s]||{n:0, cats:{}};
+    if(c==null) return;
+    if(!(c in st[s].cats)) st[s].cats[c]=0;
+  };
+  db.items.filter(i=>i.status==='open').forEach(i=>{
+    const r=i.realm||'(no realm)', s=i.stream||'(no stream)', c=i.category||'(no category)';
+    ensure(r,s,c);
+    tree[r].n++; tree[r].streams[s].n++; tree[r].streams[s].cats[c]++;
+  });
+  // drop pendings that items have since made real, then graft the rest in
+  db.pending = (db.pending||[]).filter(p=>{
+    const r=tree[p.realm||'(no realm)'];
+    if(p.category) return !(r && r.streams[p.stream||'(no stream)'] && r.streams[p.stream||'(no stream)'].cats[p.category]>0);
+    if(p.stream)   return !(r && r.streams[p.stream] && r.streams[p.stream].n>0);
+    return !(r && r.n>0);
+  });
+  db.pending.forEach(p=>{
+    if(p.category) ensure(p.realm||'(no realm)', p.stream||'(no stream)', p.category);
+    else if(p.stream) ensure(p.realm||'(no realm)', p.stream);
+    else if(p.realm) ensure(p.realm);
+  });
+  return tree;
+}
+const SEP = '\u001F';
+function treeEditRowHTML(ed, tree){
+  let destSel = '';
+  if(ed.type==='cat'){
+    const opts = [];
+    Object.keys(tree).filter(r=>!isPseudo(r)).sort((a,b)=>a.localeCompare(b)).forEach(r=>{
+      opts.push(`<option value="${esc(r)}${SEP}" ${r===ed.realm&&ed.stream===''?'selected':''}>${esc(r)} › (top level)</option>`);
+      Object.keys(tree[r].streams).filter(s=>!isPseudo(s)).sort((a,b)=>a.localeCompare(b)).forEach(s=>{
+        opts.push(`<option value="${esc(r)}${SEP}${esc(s)}" ${r===ed.realm&&s===ed.stream?'selected':''}>${esc(r)} › ${esc(s)}</option>`);
+      });
+    });
+    destSel = `<select class="tedit-dest" aria-label="Move to" title="Move to any realm, with or without a stream">${opts.join('')}</select>`;
+  } else if(ed.type==='stream'){
+    destSel = `<select class="tedit-dest" aria-label="Move to realm" title="Move to a different realm">
+      ${Object.keys(tree).filter(r=>!isPseudo(r)).sort((a,b)=>a.localeCompare(b)).map(r=>`<option ${r===ed.realm?'selected':''}>${esc(r)}</option>`).join('')}</select>`;
+  }
+  const ind = ed.type==='cat'?'ind-c':ed.type==='stream'?'ind-s':'';
+  return `<div class="t-edit ${ind}">
+    <input class="tedit-name" value="${esc(ed.name)}" aria-label="Rename ${esc(ed.name)}">${destSel}
+    <button class="setup-btn save" data-tact="editsave">Save</button>
+    <button class="setup-btn" data-tact="editcancel">Cancel</button>
+    ${ed.type==='cat'?`<button class="setup-btn" data-tact="mkstream" title="Convert this category into a stream under the selected realm">⤴ Make stream</button>
+    <button class="setup-btn" data-tact="mkrealm" title="Convert this category into its own top-level realm">⤴ Make realm</button>`:''}
+    ${ed.count===0?`<button class="setup-btn warn" data-tact="editdel">Delete</button>`:''}
+  </div>`;
+}
+function viewTree(){
+  const tree = buildTree();
+  const editingIs = (type,r,s,name)=> treeEdit && treeEdit.type===type && treeEdit.realm===r && treeEdit.stream===s && treeEdit.name===name;
+  const addingIs = (type,r,s)=> treeAdd && treeAdd.type===type && treeAdd.realm===r && treeAdd.stream===s;
+  const addRow = (type,r,s,label,ind)=> addingIs(type,r,s)
+    ? `<div class="t-add ${ind}" data-type="${type}" data-r="${esc(r||'')}" data-s="${esc(s||'')}">
+        <input class="tadd-name" placeholder="New ${label}…">
+        <button class="setup-btn save" data-tact="addsave">Add</button>
+        <button class="setup-btn" data-tact="addcancel">Cancel</button></div>`
+    : `<button class="t-plus ${ind}" data-type="${type}" data-r="${esc(r||'')}" data-s="${esc(s||'')}" data-tact="addstart">＋ ${label}</button>`;
+  const pencil = (type,r,s,name)=>{
+    // the "(no stream)" group under a real realm IS editable — naming it makes a real stream
+    const noStream = type==='stream' && name==='(no stream)';
+    if(isPseudo(r)) return '';
+    if(!noStream && (isPseudo(name) || (type!=='cat' && isPseudo(s)))) return '';
+    const sv = isPseudo(s) ? '' : (s||'');
+    const label = noStream ? 'Name this streamless group' : 'Rename '+name;
+    return `<button class="t-pencil" data-tact="editstart" data-type="${type}" data-r="${esc(r||'')}" data-s="${esc(sv)}" data-name="${esc(name)}" aria-label="${esc(label)}" title="${esc(label)}">✎</button>`;
+  };
+  const nav = (r,s,c,name,cls)=>`<span class="t-name ${cls||''}" role="button" tabindex="0" data-nav data-r="${esc(r)}"${s?` data-s="${esc(s)}"`:''}${c?` data-c="${esc(c)}"`:''}>${esc(name)}</span>`;
+
+  let h = `<h2>Structure <b>· tap a name to see its tasks · ✎ rename · ＋ add</b></h2>
+  <p class="hint">Renames apply to every task under that exact branch — a "Tech" under Hobbies won't touch a "Tech" elsewhere. Use the destination dropdown while editing to move a category or stream to a new home.</p>
+  <div class="tree">`;
+  Object.keys(tree).sort((a,b)=>tree[b].n-tree[a].n).forEach(r=>{
+    if(editingIs('realm',null,null,r)) h += treeEditRowHTML(treeEdit, tree);
+    else h += `<div class="t-realm">${nav(r,null,null,r)}<span class="cnt">${tree[r].n}</span>${pencil('realm',null,null,r)}</div>`;
+    const st = tree[r].streams;
+    Object.keys(st).sort((a,b)=>st[b].n-st[a].n).forEach(s=>{
+      if(editingIs('stream',r,null,s)) h += treeEditRowHTML(treeEdit, tree);
+      else h += `<div class="t-stream">${nav(r,s,null,s)}<span class="cnt">${st[s].n}</span>${pencil('stream',r,null,s)}</div>`;
+      const cats = st[s].cats;
+      Object.keys(cats).sort((a,b)=>cats[b]-cats[a]).forEach(c=>{
+        if(editingIs('cat',r,isPseudo(s)?'':s,c)) h += treeEditRowHTML(treeEdit, tree);
+        else h += `<div class="t-cat ${isPseudo(c)?'faint':''}">${nav(r,s,c,c)}<span class="cnt">${cats[c]}</span>${pencil('cat',r,s,c)}</div>`;
+      });
+      if(!isPseudo(r)&&!isPseudo(s)) h += addRow('cat',r,s,'category','ind-c');
+    });
+    if(!isPseudo(r)) h += addRow('stream',r,null,'stream','ind-s');
+  });
+  h += addRow('realm',null,null,'realm','ind-r');
+  return h + `</div>`;
+}
+function editBranch(ed, newName, dest){
+  // ed: the branch being edited; newName: possibly-changed name; dest: new parent
+  // ({realm,stream} for cats, {realm} for streams, ignored for realms)
+  // "(no stream)" is the placeholder for streamless items — its real value is ''
+  const old = (ed.type==='stream' && ed.name==='(no stream)') ? '' : ed.name;
+  let n = 0;
+  db.items.forEach(i=>{
+    if(ed.type==='realm'){ if((i.realm||'')===old){ i.realm=newName; n++; } }
+    else if(ed.type==='stream'){
+      if((i.realm||'')===ed.realm && (i.stream||'')===old){ i.stream=newName; i.realm=dest.realm; n++; }
+    } else {
+      if((i.realm||'')===ed.realm && (i.stream||'')===ed.stream && (i.category||'')===old){
+        i.category=newName; i.realm=dest.realm; i.stream=dest.stream; n++;
+      }
+    }
+  });
+  (db.pending||[]).forEach(p=>{
+    if(ed.type==='realm'){ if(p.realm===old) p.realm=newName; }
+    else if(ed.type==='stream'){ if(p.realm===ed.realm && p.stream===old){ p.stream=newName; p.realm=dest.realm; } }
+    else { if(p.realm===ed.realm && p.stream===ed.stream && p.category===old){ p.category=newName; p.realm=dest.realm; p.stream=dest.stream; } }
+  });
+  if(ed.type==='realm'){
+    const oi = db.settings.realmsOff.indexOf(old);
+    if(oi>=0) db.settings.realmsOff[oi] = newName;
+  }
+  if(ed.type==='cat' && newName!==old){
+    if(db.placeOf[old]!=null && db.placeOf[newName]==null) db.placeOf[newName] = db.placeOf[old];
+    if(!db.items.some(i=>(i.category||'')===old)) delete db.placeOf[old];
+  }
+  return n;
+}
+function bindTree(v){
+  v.querySelectorAll('[data-nav]').forEach(el=>{
+    const go = ()=>{
+      bNode = {realm:el.dataset.r, stream:el.dataset.s||null, cat:el.dataset.c||null};
+      bFilter = {realm:'', q:'', prio:'', mode:'active'};
+      tab = 'browse'; pushNav(); render(); window.scrollTo(0,0);
+    };
+    el.onclick = go;
+    el.onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+  });
+  v.querySelectorAll('[data-tact]').forEach(b=>b.onclick = ()=>{
+    const act = b.dataset.tact;
+    if(act==='editstart'){
+      const tree = buildTree();
+      const r=b.dataset.r||null, name=b.dataset.name, type=b.dataset.type;
+      const s = type==='cat' ? (b.dataset.s||'') : (b.dataset.s||null);
+      const sLabel = s || '(no stream)';
+      const count = type==='realm' ? tree[name].n
+        : type==='stream' ? tree[r].streams[name].n
+        : tree[r].streams[sLabel].cats[name];
+      treeEdit = {type, realm:r, stream:s, name, count};
+      treeAdd = null; render();
+      const inp = document.querySelector('.tedit-name'); if(inp){ inp.focus(); inp.select(); }
+      return;
+    }
+    if(act==='editcancel'){ treeEdit=null; render(); return; }
+    if(act==='editdel'){
+      const ed = treeEdit;
+      db.pending = db.pending.filter(p=>{
+        if(ed.type==='realm') return p.realm!==ed.name;
+        if(ed.type==='stream') return !(p.realm===ed.realm && p.stream===ed.name);
+        return !(p.realm===ed.realm && p.stream===ed.stream && p.category===ed.name);
+      });
+      treeEdit=null; save(); toast('Removed'); render(); return;
+    }
+    if(act==='editsave'){
+      const row = b.closest('.t-edit');
+      const nv = row.querySelector('.tedit-name').value.trim();
+      const ed = treeEdit; treeEdit=null;
+      if(!nv){ render(); return; }
+      let dest = null, moved = false;
+      const destSel = row.querySelector('.tedit-dest');
+      if(ed.type==='cat'){
+        const dv = destSel.value.split(SEP);
+        dest = {realm: dv[0], stream: dv[1]};
+        moved = dest.realm!==ed.realm || dest.stream!==ed.stream;
+      } else if(ed.type==='stream'){
+        dest = {realm: destSel.value};
+        moved = dest.realm!==ed.realm;
+      }
+      let changed = 0;
+      if(nv!==ed.name || moved) changed = editBranch(ed, nv, dest);
+      save();
+      toast(changed ? `${moved?'Moved':'Renamed'} ${changed} item${changed===1?'':'s'}${moved&&dest?` → ${dest.realm}${dest.stream?' › '+dest.stream:''}`:''}` : 'Saved');
+      render(); return;
+    }
+    if(act==='mkstream'){
+      const row = b.closest('.t-edit');
+      const nv = row.querySelector('.tedit-name').value.trim() || treeEdit.name;
+      const destRealm = row.querySelector('.tedit-dest').value.split(SEP)[0];
+      const ed = treeEdit; treeEdit = null;
+      let n = 0;
+      db.items.forEach(i=>{
+        if((i.realm||'')===ed.realm && (i.stream||'')===ed.stream && (i.category||'')===ed.name){
+          i.realm = destRealm; i.stream = nv; i.category = ''; n++;
+        }
+      });
+      db.pending = db.pending.filter(p=>!(p.realm===ed.realm && p.stream===ed.stream && p.category===ed.name));
+      if(!db.items.some(i=>(i.category||'')===ed.name)) delete db.placeOf[ed.name];
+      if(n===0 && !db.items.some(i=>(i.realm||'')===destRealm && (i.stream||'')===nv))
+        db.pending.push({realm:destRealm, stream:nv, category:null});
+      save();
+      toast(`"${nv}" is now a stream under ${destRealm}${n?` · ${n} item${n===1?'':'s'} came along`:''}`);
+      render(); return;
+    }
+    if(act==='mkrealm'){
+      const row = b.closest('.t-edit');
+      const nv = row.querySelector('.tedit-name').value.trim() || treeEdit.name;
+      const ed = treeEdit; treeEdit = null;
+      let n = 0;
+      db.items.forEach(i=>{
+        if((i.realm||'')===ed.realm && (i.stream||'')===ed.stream && (i.category||'')===ed.name){
+          i.realm = nv; i.stream = ''; i.category = ''; n++;
+        }
+      });
+      db.pending = db.pending.filter(p=>!(p.realm===ed.realm && p.stream===ed.stream && p.category===ed.name));
+      if(!db.items.some(i=>(i.category||'')===ed.name)) delete db.placeOf[ed.name];
+      if(n===0 && !db.items.some(i=>(i.realm||'')===nv))
+        db.pending.push({realm:nv, stream:null, category:null});
+      save();
+      toast(`"${nv}" is now a realm${n?` · ${n} item${n===1?'':'s'} came along`:''}`);
+      render(); return;
+    }
+    if(act==='addstart'){
+      treeAdd = {type:b.dataset.type, realm:b.dataset.r||null, stream:b.dataset.s||null};
+      treeEdit = null; render();
+      const inp = document.querySelector('.tadd-name'); if(inp) inp.focus();
+      return;
+    }
+    if(act==='addcancel'){ treeAdd=null; render(); return; }
+    if(act==='addsave'){
+      const row = b.closest('.t-add');
+      const nv = row.querySelector('.tadd-name').value.trim();
+      if(!nv) return;
+      const ta = treeAdd;
+      const tree = buildTree();
+      const exists = ta.type==='realm' ? !!tree[nv]
+        : ta.type==='stream' ? !!(tree[ta.realm]&&tree[ta.realm].streams[nv])
+        : !!(tree[ta.realm]&&tree[ta.realm].streams[ta.stream]&&(nv in tree[ta.realm].streams[ta.stream].cats));
+      if(exists){ toast('That name already exists here'); return; }
+      db.pending.push(ta.type==='realm' ? {realm:nv, stream:null, category:null}
+        : ta.type==='stream' ? {realm:ta.realm, stream:nv, category:null}
+        : {realm:ta.realm, stream:ta.stream, category:nv});
+      treeAdd = null; save();
+      toast(`Added — it'll show in the pickers now`); render(); return;
+    }
+  });
+  v.querySelectorAll('.tadd-name, .tedit-name').forEach(inp=>{
+    inp.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ const btn = inp.closest('.t-add, .t-edit').querySelector('[data-tact$="save"]'); if(btn) btn.click(); }
+      if(e.key==='Escape'){ treeAdd=null; treeEdit=null; render(); }
+    });
+  });
+}
+
+/* ===== editor ===== */
+function openEditor(i){
+  const dlg = document.getElementById('editor');
+  const realms = vocab('realm'), streams = vocab('stream');
+  dlg.innerHTML = `<div class="ed">
+    <h3>Edit item</h3>
+    <div class="field"><label>Description</label><textarea id="eDesc">${esc(i.desc)}</textarea></div>
+    <div class="cap-grid">
+      <div class="field"><label>Realm</label><select id="eRealm"><option value="" ${!i.realm?'selected':''}>— unfiled —</option>${realms.map(r=>`<option ${i.realm===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div>
+      <div class="field"><label>Stream</label><select id="eStream"><option value="" ${!i.stream?'selected':''}>— unfiled —</option>${streams.map(s=>`<option ${i.stream===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
+      <div class="field ac-wrap"><label>Category</label><input id="eCat" value="${esc(i.category||'')}" autocomplete="off"><div class="ac-list" id="eCatAC"></div></div>
+    </div>
+    <div class="field"><label>Priority</label><div class="prio-pick" id="ePrio">
+      ${[1,2,3,4,5].map(p=>`<button data-p="${p}" class="pv${p} ${i.priority===p&&!i.ongoing?'on':''}">${p} · ${PRIO_LABEL[p]}</button>`).join('')}
+      <button data-p="o" class="pvo ${i.ongoing?'on':''}">Ongoing</button>
+    </div></div>
+    <div class="field"><label>Next concrete action</label><input id="eNext" value="${esc(i.next||'')}" placeholder="The very next physical step — small and doable"></div>
+    <div class="field"><label>Steps (one per line — become a checklist)</label><textarea id="eSteps" rows="3" placeholder="Buy caulk at Rona&#10;Scrape old caulk out&#10;Apply new bead">${esc((i.steps||[]).map(s=>s.t).join('\n'))}</textarea></div>
+    <div class="field"><label>Effort</label><div class="prio-pick" id="eEffort">
+      <button data-e="S" class="pvS ${i.effort==='S'?'on':''}">S · quick</button>
+      <button data-e="M" class="pvM ${i.effort==='M'?'on':''}">M · afternoon</button>
+      <button data-e="L" class="pvL ${i.effort==='L'?'on':''}">L · big</button>
+    </div></div>
+    <div class="cap-grid">
+      <div class="field" style="grid-column:span 2"><label>Thoughts / log</label><textarea id="eNote" rows="3">${esc(i.notes||'')}</textarea></div>
+      <div class="field"><label>Finish by</label><input type="date" id="eDue" value="${i.due||''}"></div>
+    </div>
+    <div class="cap-grid">
+      <div class="field"><label>Waiting on</label><input id="eWait" value="${esc(i.waiting?i.waiting.who:'')}" placeholder="who has the ball?"></div>
+      <div class="field"><label>Snooze until</label><input type="date" id="eSnooze" value="${snoozed(i)?i.snoozedUntil:''}"></div>
+      <div class="field"><label>Repeat target (days)</label><input type="number" id="eEvery" min="1" max="365" value="${i.every||''}" placeholder="recurring only"></div>
+    </div>
+    <div class="btns">
+      <button class="del" id="eDel">Delete</button>
+      <div class="right"><button id="eCancel">Cancel</button><button class="save" id="eSave">Save</button></div>
+    </div>
+  </div>`;
+  let pv = i.ongoing?'o':(i.priority?String(i.priority):null);
+  dlg.querySelectorAll('#ePrio button').forEach(b=>b.onclick=()=>{
+    pv = (pv===b.dataset.p)?null:b.dataset.p;
+    dlg.querySelectorAll('#ePrio button').forEach(x=>x.classList.toggle('on', x.dataset.p===pv));
+  });
+  let ev = i.effort||null;
+  dlg.querySelectorAll('#eEffort button').forEach(b=>b.onclick=()=>{
+    ev = (ev===b.dataset.e)?null:b.dataset.e;
+    dlg.querySelectorAll('#eEffort button').forEach(x=>x.classList.toggle('on', x.dataset.e===ev));
+  });
+  bindCatAC(dlg.querySelector('#eCat'), dlg.querySelector('#eCatAC'),
+    ()=>({realm: dlg.querySelector('#eRealm').value, stream: dlg.querySelector('#eStream').value}));
+  dlg.querySelector('#eCancel').onclick = ()=>dlg.close();
+  dlg.querySelector('#eDel').onclick = ()=>{
+    const idx = db.items.indexOf(i); db.items.splice(idx,1); save();
+    undoFn = ()=>{ db.items.splice(idx,0,i); save(); render(); };
+    dlg.close(); toast('Deleted', true); render();
+  };
+  dlg.querySelector('#eSave').onclick = ()=>{
+    i.desc = dlg.querySelector('#eDesc').value.trim() || i.desc;
+    i.realm = dlg.querySelector('#eRealm').value;
+    i.stream = dlg.querySelector('#eStream').value;
+    i.category = dlg.querySelector('#eCat').value.trim();
+    i.notes = dlg.querySelector('#eNote').value.trim();
+    i.next = dlg.querySelector('#eNext').value.trim();
+    i.due = dlg.querySelector('#eDue').value || null;
+    i.every = parseInt(dlg.querySelector('#eEvery').value,10) || null;
+    i.effort = ev;
+    const wv = dlg.querySelector('#eWait').value.trim();
+    i.waiting = wv ? ((i.waiting&&i.waiting.who===wv)?i.waiting:{who:wv,since:TODAY()}) : null;
+    i.snoozedUntil = dlg.querySelector('#eSnooze').value || null;
+    const old = i.steps||[];
+    const lines = dlg.querySelector('#eSteps').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    i.steps = lines.map(t=>({t, done: old.some(o=>o.t===t&&o.done)}));
+    if(i.steps.length && !i.next){ const nx=i.steps.find(s=>!s.done); if(nx) i.next=nx.t; }
+    i.ongoing = pv==='o';
+    i.priority = (pv && pv!=='o') ? +pv : (pv==='o'?i.priority:null);
+    save(); dlg.close(); toast('Saved'); render();
+  };
+  dlg.showModal();
+}
+
+/* ===== breakdown helper ===== */
+function breakdownPrompt(i){
+  const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+  return `Help me break a big vague task into small concrete next actions.
+
+Task: ${i.desc}
+Context: ${path}${i.notes?`
+My notes so far: ${i.notes}`:''}
+
+Rules:
+- 3 to 7 steps, in order
+- Each step is a single physical action I can do in under 30 minutes
+- Start each step with a verb; be specific about place/tool/person
+- No planning-to-plan steps
+
+Reply with just the numbered list, nothing else.`;
+}
+function cleanStep(s){ return s.replace(/^\s*(?:\d+[\.)]\s*|[-*•▸]\s*)/,'').trim(); }
+function openBreakdown(i){
+  const dlg = document.getElementById('editor');
+  const prompt = breakdownPrompt(i);
+  const canAsk = typeof window.claude?.complete === 'function';
+  dlg.innerHTML = `<div class="ed">
+    <h3>🪄 Break it down</h3>
+    <p class="hint" style="margin:0">${canAsk?'Ask Claude directly, or copy':'Copy'} this prompt into Claude or ChatGPT, then paste the steps back below.</p>
+    <textarea id="bdPrompt" rows="8" readonly>${esc(prompt)}</textarea>
+    <div class="triage-alt">
+      <button id="bdCopy">Copy prompt</button>
+      ${canAsk?`<button id="bdAsk">Ask Claude now</button>`:''}
+    </div>
+    <div class="field"><label>Paste the steps here</label>
+      <textarea id="bdSteps" rows="5" placeholder="1. First small step&#10;2. Second step…"></textarea></div>
+    <div class="btns">
+      <span></span>
+      <div class="right"><button id="bdCancel">Cancel</button><button class="save" id="bdSave">Save steps</button></div>
+    </div>
+  </div>`;
+  dlg.querySelector('#bdCopy').onclick = async ()=>{
+    const ta = dlg.querySelector('#bdPrompt');
+    ta.select();
+    try{ await navigator.clipboard.writeText(prompt); toast('Prompt copied'); }
+    catch(e){ document.execCommand('copy'); toast('Prompt copied'); }
+  };
+  const ask = dlg.querySelector('#bdAsk');
+  if(ask) ask.onclick = async ()=>{
+    ask.disabled = true; ask.textContent = 'Thinking…';
+    try{
+      const res = await window.claude.complete(prompt);
+      dlg.querySelector('#bdSteps').value = typeof res==='string' ? res : (res?.completion || JSON.stringify(res));
+    }catch(e){ toast('Direct ask failed — use Copy prompt instead'); }
+    ask.disabled = false; ask.textContent = 'Ask Claude now';
+  };
+  dlg.querySelector('#bdCancel').onclick = ()=>dlg.close();
+  dlg.querySelector('#bdSave').onclick = ()=>{
+    const lines = dlg.querySelector('#bdSteps').value.split('\n').map(cleanStep).filter(Boolean);
+    if(!lines.length){ toast('Paste at least one step first'); return; }
+    i.steps = lines.map(t=>({t, done:false}));
+    i.next = lines[0];
+    save(); dlg.close(); toast('Checklist created — first step is your next action'); render();
+  };
+  dlg.showModal();
+}
+
+/* ===== import / export ===== */
+function download(name, text, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text],{type}));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+/* theme: per-device, cycles auto → dark → light */
+const THEME_KEY = 'lifetracker.theme';
+function applyTheme(){
+  const t = localStorage.getItem(THEME_KEY) || 'auto';
+  if(t==='auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  const b = document.getElementById('themeBtn');
+  b.textContent = t==='auto' ? '◐' : (t==='dark' ? '🌙' : '☀️');
+  b.title = `Theme: ${t==='auto'?'match device':t} — tap to change`;
+}
+document.getElementById('themeBtn').onclick = ()=>{
+  const cur = localStorage.getItem(THEME_KEY) || 'auto';
+  const next = cur==='auto' ? 'dark' : (cur==='dark' ? 'light' : 'auto');
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme();
+  toast(next==='auto' ? 'Theme: match device' : `Theme: ${next}`);
+};
+applyTheme();
+
+document.getElementById('menuBtn').onclick = e=>{
+  e.stopPropagation();
+  document.getElementById('menu').classList.toggle('open');
+};
+document.addEventListener('click', ()=>document.getElementById('menu').classList.remove('open'));
+document.getElementById('expJson').onclick = ()=>{
+  db.settings.lastBackup = TODAY(); save();
+  download(`life-tracker-backup-${TODAY()}.json`, JSON.stringify(db,null,1), 'application/json');
+  toast('Backup downloaded');
+};
+document.getElementById('expCsv').onclick = ()=>{
+  const q = s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const rows = [['Added','Realm','Stream','Category','Description','Priority','Effort','Finish by','Next action','Steps','Thoughts & Next Steps','Status','Waiting on','Waiting since','Snoozed until','Done / last done','Repeat target (days)'].map(q).join(',')];
+  db.items.forEach(i=>rows.push([i.added,i.realm,i.stream,i.category,i.desc,i.ongoing?'Ongoing':(i.priority||''),i.effort||'',i.due||'',i.next||'',(i.steps||[]).map(s=>(s.done?'[x] ':'[ ] ')+s.t).join(' / '),i.notes||'',i.someday?'someday':i.status,i.waiting?i.waiting.who:'',i.waiting?i.waiting.since:'',i.snoozedUntil||'',i.doneAt||'',i.every||''].map(q).join(',')));
+  download(`life-tracker-${TODAY()}.csv`, rows.join('\n'), 'text/csv');
+  toast('CSV downloaded');
+};
+document.getElementById('expOrig').onclick = ()=>{
+  const q = s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const fmtDate = iso=>{
+    if(!iso) return '';
+    const [y,m,d] = iso.split('-').map(Number);
+    return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  };
+  const realms = vocab('realm');
+  const items = db.items.filter(i=>i.status==='open');
+  items.sort((a,b)=>{
+    const r = realms.indexOf(a.realm)-realms.indexOf(b.realm); if(r) return r;
+    const s = (a.stream||'').localeCompare(b.stream||''); if(s) return s;
+    const c = (a.category||'').localeCompare(b.category||''); if(c) return c;
+    return (a.added||'').localeCompare(b.added||'');
+  });
+  const rows = [['Added','Realm','Stream','Category','Description','Priority','Finish by','Thoughts & Next Steps'].map(q).join(',')];
+  items.forEach(i=>{
+    const thoughts = [
+      i.next?`Next: ${i.next}`:'',
+      (i.steps&&i.steps.length)?'Plan: '+i.steps.map(s=>(s.done?'✓ ':'')+s.t).join('; '):'',
+      i.waiting?`Waiting on ${i.waiting.who} since ${i.waiting.since}`:'',
+      (i.notes||'').replace(/\n/g,' | ')
+    ].filter(Boolean).join(' — ');
+    rows.push([fmtDate(i.added),i.realm||'',i.stream||'',i.category||'',i.desc,i.ongoing?'Ongoing':(i.priority||''),i.due?fmtDate(i.due):'',thoughts].map(q).join(','));
+  });
+  download(`00 - Life Tracker ${TODAY()}.csv`, rows.join('\n'), 'text/csv');
+  toast('Original-format CSV downloaded');
+};
+document.getElementById('impJson').onclick = ()=>document.getElementById('fileIn').click();
+document.getElementById('fileIn').onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const data = JSON.parse(r.result);
+      if(!data.items || !Array.isArray(data.items)) throw new Error('bad');
+      openImportConfirm(data, f.name);
+    }catch(err){ toast("That file isn't a Life Tracker backup"); }
+  };
+  r.readAsText(f);
+  e.target.value='';
+};
+function openImportConfirm(data, fname){
+  const dlg = document.getElementById('editor');
+  const openN = data.items.filter(i=>i.status==='open').length;
+  const doneN = data.items.filter(i=>i.status==='done').length;
+  const exported = data.settings && data.settings.lastBackup;
+  dlg.innerHTML = `<div class="ed">
+    <h3>Import backup</h3>
+    <p class="hint" style="margin:0">${esc(fname)}</p>
+    <div style="font-size:14.5px;line-height:1.5">This backup holds <b>${data.items.length}</b> items — ${openN} open, ${doneN} done${exported?` — exported <b>${exported}</b>`:''}.<br>
+    Importing <b>replaces</b> the ${db.items.length} items currently on this device. If you've made changes here since that export, they'll be lost.</div>
+    <div class="btns"><span></span><div class="right">
+      <button id="impCancel">Cancel</button>
+      <button class="save" id="impGo">Replace &amp; import</button>
+    </div></div>
+  </div>`;
+  dlg.querySelector('#impCancel').onclick = ()=>dlg.close();
+  dlg.querySelector('#impGo').onclick = ()=>{
+    db = data;
+    db.settings = db.settings || {};
+    db.settings.realmsOff = db.settings.realmsOff || [];
+    db.custom = db.custom || {realm:[], stream:[], category:[]};
+    db.placeOf = db.placeOf || {};
+    db.places = db.places || ['Yellow House','High Creek','Gambier'];
+    save(); dlg.close(); tab='today';
+    toast(`Imported ${db.items.length} items ✓`); render();
+  };
+  dlg.showModal();
+}
+
+/* ===== cloud sync (Supabase) ===== */
+const SUPA_URL = 'https://lhpriysnnnyuyrdlstdm.supabase.co';
+const SUPA_KEY = 'sb_publishable_9Eke6ShVrrBelVuduK4Qhw_2O4uTMbt';
+const supa = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+let session = null, syncStarted = false, dirty = false, pushTimer = null, lastStamp = null, channel = null;
+
+function setSync(state, msg){
+  const el = document.getElementById('syncDot');
+  el.className = 'sync ' + state;
+  el.textContent = {synced:'● synced', syncing:'↻ syncing', offline:'⚠ offline', local:'· local'}[state] || state;
+  el.title = msg || '';
+}
+function scheduleSync(){
+  if(!session || !supa) return;
+  dirty = true; setSync('syncing');
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 1200);
+}
+async function pushNow(){
+  if(!session || !dirty) return;
+  const stamp = new Date().toISOString();
+  const {error} = await supa.from('tracker_data')
+    .upsert({user_id: session.user.id, data: db, updated_at: stamp});
+  if(error){ setSync('offline', error.message); return; }
+  dirty = false; lastStamp = stamp; setSync('synced');
+}
+window.addEventListener('online', ()=>{ if(dirty) pushNow(); });
+
+async function initialSync(){
+  setSync('syncing');
+  const uid = session.user.id;
+  const {data: row, error} = await supa.from('tracker_data').select('data,updated_at').maybeSingle();
+  if(error){ setSync('offline', error.message); toast('Cloud error: '+error.message); return; }
+  if(row && row.data && row.data.items){
+    db = migrate(row.data);
+    db.owner = uid;
+    lastStamp = row.updated_at;
+    saveLocalOnly();
+    setSync('synced'); render();
+  } else {
+    // brand-new account: never inherit another user's cached data from this browser
+    if(db.owner && db.owner !== uid){
+      db = migrate({items: []});
+      saveLocalOnly();
+    }
+    db.owner = uid;
+    dirty = true; await pushNow(); render();
+    if(!dirty) toast('First sync complete — your data is in the cloud ✓');
+  }
+  startRealtime();
+}
+function startRealtime(){
+  if(channel) supa.removeChannel(channel);
+  channel = supa.channel('tracker-sync')
+    .on('postgres_changes',
+      {event:'*', schema:'public', table:'tracker_data', filter:`user_id=eq.${session.user.id}`},
+      payload=>{
+        const row = payload.new;
+        if(!row || !row.data || row.updated_at===lastStamp || dirty) return;
+        db = migrate(row.data);
+        lastStamp = row.updated_at;
+        saveLocalOnly();
+        render(); toast('⇣ Updated from another device');
+      })
+    .subscribe();
+}
+
+/* auth */
+function updateGate(){
+  document.getElementById('authGate').style.display = session ? 'none' : 'flex';
+  document.getElementById('app').style.display = session ? '' : 'none';
+}
+async function doAuth(mode){
+  const email = document.getElementById('authEmail').value.trim();
+  const pw = document.getElementById('authPw').value;
+  const err = document.getElementById('authErr');
+  err.textContent = '';
+  if(!email || !pw){ err.textContent = 'Email and password, both.'; return; }
+  const {data, error} = mode==='in'
+    ? await supa.auth.signInWithPassword({email, password: pw})
+    : await supa.auth.signUp({email, password: pw});
+  if(error){ err.textContent = error.message; return; }
+  if(mode==='up' && !data.session){
+    err.textContent = 'Account created — check your email for a confirmation link, then sign in.';
+  }
+}
+document.getElementById('authIn').onclick = ()=>doAuth('in');
+document.getElementById('authUp').onclick = ()=>doAuth('up');
+document.getElementById('authPw').addEventListener('keydown', e=>{ if(e.key==='Enter') doAuth('in'); });
+document.getElementById('signOut').onclick = async ()=>{
+  if(supa) await supa.auth.signOut();
+  toast('Signed out');
+};
+
+/* ===== go ===== */
+const h0 = location.hash.slice(1);
+if(TABS.some(([k])=>k===h0)) tab = h0;
+try{ history.replaceState({tab, bNode:null, reviewStep:1}, '', '#'+tab); }catch(e){}
+initCapture();
+render();
+setSync('local');
+if(!supa){
+  document.getElementById('authGate').style.display = 'none';
+  setSync('offline', 'Sync library failed to load — running local-only');
+} else {
+  supa.auth.onAuthStateChange((event, s)=>{
+    session = s;
+    updateGate();
+    if(s && !syncStarted){ syncStarted = true; initialSync(); }
+    if(event==='SIGNED_OUT'){ syncStarted = false; setSync('local'); }
+  });
+  supa.auth.getSession().then(({data:{session:s}})=>{
+    session = s;
+    updateGate();
+    if(s && !syncStarted){ syncStarted = true; initialSync(); }
+  });
+}
+</script>
