@@ -961,7 +961,7 @@ function viewToday(){
   if(dueSoon.length){
     h += `<h2>Due in the next two weeks</h2>` + dueSoon.map(i=>cardHTML(i)).join('');
   }
-  const lapsed = db.items.filter(i=>i.ongoing && i.status==='open' && inRealm(i) && inPlace(i) && habitUrgency(i)>=1)
+  const lapsed = db.items.filter(i=>i.ongoing && i.status==='open' && inRealm(i) && inPlace(i) && !snoozed(i) && habitUrgency(i)>=1)
     .sort((a,b)=>habitUrgency(b)-habitUrgency(a)).slice(0,4);
   if(lapsed.length){
     h += `<h2>Recurring — slipping</h2>` + lapsed.map(habitCardHTML).join('');
@@ -1248,13 +1248,14 @@ function habitCardHTML(i){
   const target = i.every ? ` · aim: every ${i.every}d` : '';
   return `<div class="card ${over||n==null?'pl2':'plo'}" data-id="${i.id}">
     <div class="top"><div class="desc">${esc(i.desc)}</div>${habitPill(i)}</div>
-    <div class="meta">${esc(path)}${target}</div>
+    <div class="meta">${esc(path)}${target}${snoozed(i)?' · 😴 deferred until '+i.snoozedUntil:''}</div>
     <div class="since ${over?'over':''}">${n==null?'Never logged — when did you last do this?':`Last done <b>${sinceLabel(n)}</b> · ${i.doneAt}`}</div>
     ${habitDotsHTML(i)}
     ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
     <div class="acts">
       <button class="do" data-act="log">✓ Did it today</button>
       <label class="logdate-wrap">or on <input type="date" class="logdate" max="${TODAY()}"></label>
+      <button data-act="defer">Defer 1w</button>
       <button data-act="edit">Edit</button>
     </div>
   </div>`;
