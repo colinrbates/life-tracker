@@ -1164,7 +1164,7 @@ function bindReview(v){
 }
 
 /* Browse */
-let bFilter = {realm:'', q:'', prio:'', mode:'active'};
+let bFilter = {q:'', prios:[], mode:'active'};
 let bNode = null; // set by tapping the structure tree
 let pinDraft = '';
 function nodeMatch(val, want){
@@ -1173,7 +1173,6 @@ function nodeMatch(val, want){
   return (val||'')===want;
 }
 function viewBrowse(){
-  const realms = vocab('realm');
   let items;
   if(bNode){
     items = db.items.filter(i=>i.status==='open'
@@ -1184,18 +1183,23 @@ function viewBrowse(){
       bFilter.mode==='waiting' ? !!i.waiting :
       (!i.someday && !i.waiting)));
   }
-  if(db.settings.place) items = items.filter(inPlace);
-  if(bFilter.realm) items = items.filter(i=>i.realm===bFilter.realm);
-  if(bFilter.prio) items = items.filter(i=>String(i.priority||'n')===bFilter.prio);
+  items = items.filter(inRealm);
   if(bFilter.q){ const q=bFilter.q.toLowerCase(); items = items.filter(i=>(i.desc+' '+(i.notes||'')+' '+(i.category||'')).toLowerCase().includes(q)); }
+  // priority chips: counts computed before the priority filter, so off chips still show counts
+  const pCounts = {};
+  items.forEach(i=>{ const p=i.priority||0; pCounts[p]=(pCounts[p]||0)+1; });
+  if(bFilter.prios.length) items = items.filter(i=>bFilter.prios.includes(i.priority||0));
   // group by stream
   const groups = {};
   items.forEach(i=>{ const k=(i.realm||'')+' › '+(i.stream||''); (groups[k]=groups[k]||[]).push(i); });
   Object.values(groups).forEach(g=>g.sort((a,b)=>(a.priority||9)-(b.priority||9)));
-  let h = `<div class="filters">
-    <select id="bRealm"><option value="">All realms</option>${realms.map(r=>`<option ${bFilter.realm===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
-    <select id="bPrio"><option value="">All priorities</option>${[1,2,3,4,5].map(p=>`<option value="${p}" ${bFilter.prio==p?'selected':''}>${p} · ${PRIO_LABEL[p]}</option>`).join('')}<option value="n" ${bFilter.prio==='n'?'selected':''}>Unset</option></select>
+  let h = realmChipsHTML();
+  h += `<div class="filters">
     <input id="bQ" placeholder="Search…" value="${esc(bFilter.q)}">
+  </div>
+  <div class="chip-row">
+    ${[1,2,3,4,5].map(p=>`<button class="chip ${bFilter.prios.includes(p)?'on':''}" data-bprio="${p}">${p} · ${PRIO_LABEL[p]}${pCounts[p]?` (${pCounts[p]})`:''}</button>`).join('')}
+    <button class="chip ${bFilter.prios.includes(0)?'on':''}" data-bprio="0">unset${pCounts[0]?` (${pCounts[0]})`:''}</button>
   </div>
   <div class="chip-row">
     ${bNode?`<button class="chip on" id="bNodeClear">📌 ${esc([bNode.realm,bNode.stream,bNode.cat].filter(Boolean).join(' › '))} · ${items.length} ✕</button>`:`
@@ -1221,8 +1225,12 @@ function viewBrowse(){
   return h;
 }
 function bindBrowse(v){
-  v.querySelector('#bRealm').onchange = e=>{ bFilter.realm=e.target.value; render(); };
-  v.querySelector('#bPrio').onchange = e=>{ bFilter.prio=e.target.value; render(); };
+  v.querySelectorAll('[data-bprio]').forEach(b=>b.onclick=()=>{
+    const p = +b.dataset.bprio;
+    const idx = bFilter.prios.indexOf(p);
+    if(idx>=0) bFilter.prios.splice(idx,1); else bFilter.prios.push(p);
+    render();
+  });
   const q = v.querySelector('#bQ');
   q.oninput = ()=>{ bFilter.q=q.value; clearTimeout(q._t); q._t=setTimeout(render,250); };
   q.onkeydown = e=>{ if(e.key==='Enter'){ bFilter.q=q.value; render(); } };
@@ -1541,7 +1549,7 @@ function bindTree(v){
   v.querySelectorAll('[data-nav]').forEach(el=>{
     const go = ()=>{
       bNode = {realm:el.dataset.r, stream:el.dataset.s||null, cat:el.dataset.c||null};
-      bFilter = {realm:'', q:'', prio:'', mode:'active'};
+      bFilter = {q:'', prios:[], mode:'active'};
       tab = 'browse'; pushNav(); render(); window.scrollTo(0,0);
     };
     el.onclick = go;
