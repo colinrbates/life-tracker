@@ -566,8 +566,9 @@ function initCapture(){
     const k = (tab==='browse' && bNode) ? [bNode.realm,bNode.stream,bNode.cat].join('|') : null;
     if(k === capPinKey) return;
     capPinKey = k;
-    document.getElementById('capRealm').value = k ? clean(bNode.realm) : '';
-    document.getElementById('capStream').value = k ? clean(bNode.stream) : '';
+    const r = document.getElementById('capRealm'), s = document.getElementById('capStream');
+    r.value = k ? clean(bNode.realm) : '';
+    fillStreamOptions(s, r.value, k ? clean(bNode.stream) : '');
     document.getElementById('capCat').value = k ? clean(bNode.cat) : '';
   };
   const setCapOpen = v=>{
@@ -585,6 +586,10 @@ function initCapture(){
   add.addEventListener('click', doAdd);
   bindCatAC(document.getElementById('capCat'), document.getElementById('capCatAC'),
     ()=>({realm: document.getElementById('capRealm').value, stream: document.getElementById('capStream').value}));
+  document.getElementById('capRealm').addEventListener('change', ()=>{
+    const s = document.getElementById('capStream');
+    fillStreamOptions(s, document.getElementById('capRealm').value, s.value);
+  });
 
   const pp = document.getElementById('capPrio');
   pp.innerHTML = [1,2,3,4,5].map(p=>`<button data-p="${p}" class="pv${p}">${p} · ${PRIO_LABEL[p]}</button>`).join('')
@@ -628,13 +633,28 @@ function initCapture(){
     text.focus();
   }
 }
+function streamsFor(realm){
+  const c = {};
+  db.items.forEach(i=>{
+    const s = (i.stream||'').trim(); if(!s) return;
+    if(realm && (i.realm||'')!==realm) return;
+    c[s] = (c[s]||0)+1;
+  });
+  (db.pending||[]).forEach(p=>{
+    if(p.stream && (!realm || p.realm===realm) && !(p.stream in c)) c[p.stream]=0;
+  });
+  return Object.keys(c).sort((a,b)=>c[b]-c[a]);
+}
+function fillStreamOptions(sel, realm, keep){
+  sel.innerHTML = `<option value="">— unfiled —</option>` + streamsFor(realm).map(v=>`<option>${esc(v)}</option>`).join('');
+  sel.value = [...sel.options].some(o=>o.value===keep) ? keep : '';
+}
 function fillPickers(){
   const r = document.getElementById('capRealm'), s = document.getElementById('capStream');
   const keepR = r.value, keepS = s.value;
   r.innerHTML = `<option value="">— unfiled —</option>` + vocab('realm').map(v=>`<option>${esc(v)}</option>`).join('');
-  s.innerHTML = `<option value="">— unfiled —</option>` + vocab('stream').map(v=>`<option>${esc(v)}</option>`).join('');
-  if(keepR) r.value = keepR;
-  if(keepS) s.value = keepS;
+  r.value = [...r.options].some(o=>o.value===keepR) ? keepR : '';
+  fillStreamOptions(s, r.value, keepS);
 }
 
 /* ===== realm focus chips ===== */
@@ -774,6 +794,7 @@ function openWaiting(i){
 /* ===== views ===== */
 function render(){
   renderTabs();
+  document.getElementById('capture').style.display = ['tree','triage','done','review'].includes(tab) ? 'none' : '';
   const v = document.getElementById('view');
   if(tab==='today') v.innerHTML = viewToday();
   if(tab==='triage') v.innerHTML = viewTriage();
@@ -1374,7 +1395,7 @@ function bindHabits(v){
 let sheetQ = '';
 const SHEET_FIELDS = ['realm','stream','category','desc','due','next','notes'];
 function viewSheet(){
-  let rows = db.items.filter(i=>i.status==='open');
+  let rows = db.items.filter(i=>i.status==='open' && inRealm(i));
   if(sheetQ){
     const q = sheetQ.toLowerCase();
     rows = rows.filter(i=>(i.desc+' '+(i.notes||'')+' '+(i.category||'')+' '+(i.stream||'')+' '+(i.realm||'')).toLowerCase().includes(q));
@@ -1386,7 +1407,8 @@ function viewSheet(){
     <option value="" ${!i.ongoing&&!i.priority?'selected':''}>—</option>
     ${[1,2,3,4,5].map(p=>`<option value="${p}" ${!i.ongoing&&i.priority===p?'selected':''}>${p}</option>`).join('')}
     <option value="o" ${i.ongoing?'selected':''}>Ongoing</option></select></td>`;
-  let h = `<div class="filters">
+  let h = realmChipsHTML();
+  h += `<div class="filters">
     <input id="sheetQ" placeholder="Filter rows…" value="${esc(sheetQ)}">
     <button class="setup-btn save" id="sheetAdd">＋ Add row</button>
     <span class="hint" style="margin:0;align-self:center">${rows.length} row${rows.length===1?'':'s'}</span>
@@ -1822,7 +1844,7 @@ function openEditor(i){
     <div class="field"><label>Description</label><textarea id="eDesc">${esc(i.desc)}</textarea></div>
     <div class="cap-grid">
       <div class="field"><label>Realm</label><select id="eRealm"><option value="" ${!i.realm?'selected':''}>— unfiled —</option>${realms.map(r=>`<option ${i.realm===r?'selected':''}>${esc(r)}</option>`).join('')}</select></div>
-      <div class="field"><label>Stream</label><select id="eStream"><option value="" ${!i.stream?'selected':''}>— unfiled —</option>${streams.map(s=>`<option ${i.stream===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
+      <div class="field"><label>Stream</label><select id="eStream"><option value="" ${!i.stream?'selected':''}>— unfiled —</option>${streamsFor(i.realm||'').map(s=>`<option ${i.stream===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div>
       <div class="field ac-wrap"><label>Category</label><input id="eCat" value="${esc(i.category||'')}" autocomplete="off"><div class="ac-list" id="eCatAC"></div></div>
     </div>
     <div class="field"><label>Priority</label><div class="prio-pick" id="ePrio">
@@ -1862,6 +1884,9 @@ function openEditor(i){
   });
   bindCatAC(dlg.querySelector('#eCat'), dlg.querySelector('#eCatAC'),
     ()=>({realm: dlg.querySelector('#eRealm').value, stream: dlg.querySelector('#eStream').value}));
+  dlg.querySelector('#eRealm').addEventListener('change', ()=>{
+    fillStreamOptions(dlg.querySelector('#eStream'), dlg.querySelector('#eRealm').value, dlg.querySelector('#eStream').value);
+  });
   dlg.querySelector('#eCancel').onclick = ()=>dlg.close();
   dlg.querySelector('#eDel').onclick = ()=>{
     const idx = db.items.indexOf(i); db.items.splice(idx,1); save();
