@@ -118,6 +118,13 @@ h2 b{color:var(--ink-soft)}
 .triage-alt button{flex:1;border:1px solid var(--line);background:var(--ground);color:var(--ink-soft);border-radius:9px;padding:10px 4px;font-size:13px;font-weight:600}
 .progress{font-size:12px;font-family:var(--mono);color:var(--ink-faint);text-align:center;margin-top:12px}
 
+/* triage classification chips */
+.t-cls{margin:12px 0 0}
+.t-cls-l{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-weight:700;margin-bottom:5px}
+.t-cls .chip-row{margin-bottom:2px}
+.tnew{display:inline-flex;gap:6px;align-items:center}
+.tnew-in{border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--ground);font-size:13px;width:150px}
+
 /* browse filters */
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .filters select,.filters input{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--surface);font-size:14px}
@@ -214,6 +221,8 @@ table.sheet{border-collapse:collapse;width:100%;min-width:1080px;font-size:13px}
 .sheet .sc-fixed{text-align:center}
 .sheet .s-prio{border:1px solid var(--line);border-radius:6px;background:var(--ground);padding:3px 4px;font-size:12.5px}
 .sheet tr.s-done td{opacity:.45;text-decoration:line-through}
+.sheet .sc-pin{position:sticky;right:0;background:var(--surface);box-shadow:-4px 0 6px -4px rgba(0,0,0,.25);z-index:1}
+.sheet th.sc-pin{background:var(--ground);z-index:3}
 .sheet input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
 
 /* sort direction toggle */
@@ -658,12 +667,23 @@ function fillPickers(){
 }
 
 /* ===== realm focus chips ===== */
-function realmChipsHTML(){
-  // chips mirror the tree: realms with open items, plus planned (pending) realms
+function activeRealms(){
+  // mirrors the tree: realms with open items, plus planned (pending) realms
   const counts = {};
   db.items.forEach(i=>{ if(i.status==='open' && (i.realm||'')) counts[i.realm]=(counts[i.realm]||0)+1; });
   (db.pending||[]).forEach(p=>{ if(p.realm && !(p.realm in counts)) counts[p.realm]=0; });
-  const realms = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+  return Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+}
+function catsFor(realm, stream){
+  const set = new Set();
+  db.items.forEach(i=>{
+    if((i.realm||'')===realm && (i.stream||'')===stream && (i.category||'').trim()) set.add(i.category.trim());
+  });
+  (db.pending||[]).forEach(p=>{ if(p.category && p.realm===realm && p.stream===stream) set.add(p.category); });
+  return [...set].sort((a,b)=>a.localeCompare(b));
+}
+function realmChipsHTML(){
+  const realms = activeRealms();
   const off = db.settings.realmsOff;
   const anyOff = off.length>0;
   return `<div class="chip-row" id="realmChips">
@@ -1060,7 +1080,7 @@ function viewToday(){
 function addDays(n){ const d=new Date(); d.setDate(d.getDate()+n); return localISO(d); }
 
 /* Triage: one decision at a time */
-let triageQueue = null;
+let triageQueue = null, triageNew = null;
 function viewTriage(){
   const q = db.items.filter(i=>needsTriage(i)&&inRealm(i));
   // unprioritized first (newest first), then stale (oldest first)
@@ -1077,12 +1097,30 @@ function viewTriage(){
     ? `<div class="q nop">No priority · added ${ageLabel(i)} ago</div>`
     : `<div class="q stale">Marked "${PRIO_LABEL[i.priority]}" ${ageLabel(i)} ago — still true?</div>`;
   const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
+  // progressive classification chips: realm (if unfiled) → its streams → their categories
+  const tChip = (label, on, attr, val) => `<button class="chip ${on?'on':''}" ${attr}="${esc(val)}">${esc(label)}</button>`;
+  const tNew = (kind) => triageNew===kind
+    ? `<span class="tnew"><input class="tnew-in" data-tnewkind="${kind}" placeholder="New ${kind==='cat'?'category':kind}…"><button class="setup-btn save" data-tnewsave="${kind}">Add</button></span>`
+    : `<button class="chip" data-tnew="${kind}">＋ new</button>`;
+  let cls = '';
+  if(!i.realm){
+    cls = `<div class="t-cls"><span class="t-cls-l">Realm</span><div class="chip-row">
+      ${activeRealms().map(r=>tChip(r, false, 'data-tr', r)).join('')}${tNew('realm')}</div></div>`;
+  } else {
+    cls = `<div class="t-cls"><span class="t-cls-l">Stream · under ${esc(i.realm)}</span><div class="chip-row">
+      ${streamsFor(i.realm).map(s=>tChip(s, i.stream===s, 'data-ts', s)).join('')}${tNew('stream')}</div></div>`;
+    if(i.stream){
+      cls += `<div class="t-cls"><span class="t-cls-l">Category · under ${esc(i.stream)}</span><div class="chip-row">
+        ${catsFor(i.realm, i.stream).map(c=>tChip(c, i.category===c, 'data-tc', c)).join('')}${tNew('cat')}</div></div>`;
+    }
+  }
   return realmChipsHTML() + `<div class="triage-card" data-id="${i.id}">
     ${reason}
     <div class="desc">${esc(i.desc)}</div>
     <div class="meta">${esc(path)}</div>
     ${i.next?`<div class="next">▸ ${esc(i.next)}</div>`:''}
     ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
+    ${cls}
     <div class="triage-prios">
       ${[1,2,3,4,5].map(p=>`<button data-p="${p}" style="background:var(--p${p})">${p}<span class="lbl">${PRIO_LABEL[p]}</span></button>`).join('')}
     </div>
@@ -1102,10 +1140,44 @@ function bindTriage(v){
   const i = db.items.find(x=>x.id===card.dataset.id);
   card.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{
     i.priority = +b.dataset.p; i.added = i.priority<=2 ? TODAY() : i.added; save();
+    triageNew = null;
     toast(`Set to ${b.dataset.p} · ${PRIO_LABEL[b.dataset.p]}`); render();
+  });
+  // classification chips
+  card.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{
+    i.realm = b.dataset.tr; triageNew = null; save(); render();
+  });
+  card.querySelectorAll('[data-ts]').forEach(b=>b.onclick=()=>{
+    if(i.stream !== b.dataset.ts){ i.stream = b.dataset.ts; i.category = ''; }
+    triageNew = null; save(); render();
+  });
+  card.querySelectorAll('[data-tc]').forEach(b=>b.onclick=()=>{
+    i.category = i.category===b.dataset.tc ? '' : b.dataset.tc;
+    triageNew = null; save(); render();
+  });
+  card.querySelectorAll('[data-tnew]').forEach(b=>b.onclick=()=>{
+    triageNew = b.dataset.tnew; render();
+    const inp = document.querySelector('.tnew-in'); if(inp) inp.focus();
+  });
+  const commitNew = ()=>{
+    const inp = card.querySelector('.tnew-in'); if(!inp) return;
+    const val = inp.value.trim(); if(!val){ triageNew=null; render(); return; }
+    const kind = inp.dataset.tnewkind;
+    if(kind==='realm') i.realm = val;
+    if(kind==='stream'){ i.stream = val; i.category = ''; }
+    if(kind==='cat') i.category = val;
+    triageNew = null; save(); render();
+  };
+  const saveBtn = card.querySelector('[data-tnewsave]');
+  if(saveBtn) saveBtn.onclick = commitNew;
+  const newIn = card.querySelector('.tnew-in');
+  if(newIn) newIn.addEventListener('keydown', e=>{
+    if(e.key==='Enter') commitNew();
+    if(e.key==='Escape'){ triageNew=null; render(); }
   });
   card.querySelectorAll('[data-alt]').forEach(b=>b.onclick=()=>{
     const a = b.dataset.alt;
+    triageNew = null;
     if(a==='wait'){ openWaiting(i); return; }
     if(a==='someday'){ i.someday=true; save(); toast('Moved to Someday'); }
     if(a==='done'){ i.status='done'; i.doneAt=TODAY(); save(); toast('Done! 🎉'); }
@@ -1414,7 +1486,7 @@ function viewSheet(){
     <span class="hint" style="margin:0;align-self:center">${rows.length} row${rows.length===1?'':'s'}</span>
   </div>
   <div class="sheet-wrap"><table class="sheet"><thead><tr>
-    <th title="Done">✓</th><th>Realm</th><th>Stream</th><th>Category</th><th class="w-desc">Task</th><th>Pri</th><th>Due</th><th class="w-next">Next action</th><th class="w-notes">Notes</th><th>Added</th><th></th>
+    <th title="Done">✓</th><th>Realm</th><th>Stream</th><th>Category</th><th class="w-desc">Task</th><th>Pri</th><th>Due</th><th class="w-next">Next action</th><th class="w-notes">Notes</th><th>Added</th><th class="sc-pin"></th>
   </tr></thead><tbody>`;
   rows.forEach(i=>{
     h += `<tr data-row="${i.id}">
@@ -1424,7 +1496,7 @@ function viewSheet(){
       ${cell(i,'due')}
       ${cell(i,'next','w-next')}${cell(i,'notes','w-notes')}
       <td class="sc-ro">${i.added||''}</td>
-      <td class="sc-fixed"><button class="q-btn" data-sheetdel data-id="${i.id}" aria-label="Delete">✕</button></td>
+      <td class="sc-fixed sc-pin"><button class="q-btn" data-sheetdel data-id="${i.id}" aria-label="Delete row" title="Delete row">✕</button></td>
     </tr>`;
   });
   h += `</tbody></table></div>`;
