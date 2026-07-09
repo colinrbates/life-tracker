@@ -429,6 +429,11 @@ function migrate(d){
   }
   d.qlists.forEach(l=>{ l.items = (l.items||[]).filter(q=>!q.done || !q.doneAt || q.doneAt >= addDays(-3)); });
   d.settings.place = '';
+  // drop filter entries for realms that no longer exist
+  const liveRealms = new Set();
+  d.items.forEach(i=>{ if(i.status==='open' && i.realm) liveRealms.add(i.realm); });
+  (d.pending||[]).forEach(p=>{ if(p.realm) liveRealms.add(p.realm); });
+  d.settings.realmsOff = d.settings.realmsOff.filter(r=>liveRealms.has(r));
   return d;
 }
 let db = migrate(load());
@@ -600,7 +605,11 @@ function fillPickers(){
 
 /* ===== realm focus chips ===== */
 function realmChipsHTML(){
-  const realms = vocab('realm');
+  // chips mirror the tree: realms with open items, plus planned (pending) realms
+  const counts = {};
+  db.items.forEach(i=>{ if(i.status==='open' && (i.realm||'')) counts[i.realm]=(counts[i.realm]||0)+1; });
+  (db.pending||[]).forEach(p=>{ if(p.realm && !(p.realm in counts)) counts[p.realm]=0; });
+  const realms = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
   const off = db.settings.realmsOff;
   const anyOff = off.length>0;
   return `<div class="chip-row" id="realmChips">
