@@ -93,6 +93,14 @@ h2 b{color:var(--ink-soft)}
 .pill.pv1{background:var(--p1)}.pill.pv2{background:var(--p2)}.pill.pv3{background:var(--p3)}
 .pill.pv4{background:var(--p4)}.pill.pv5{background:var(--p5)}.pill.pvo{background:var(--accent)}
 .pill.pvn{background:none;color:var(--ink-faint);border:1px dashed var(--ink-faint)}
+button.pill-btn{cursor:pointer;border:none;font-family:var(--mono)}
+button.pill-btn.pvn{border:1px dashed var(--ink-faint)}
+.pill-pick{display:inline-flex;gap:3px;flex-shrink:0;align-items:center}
+.pp{border:none;border-radius:6px;color:#fff;font-family:var(--mono);font-weight:800;font-size:11px;padding:3px 8px;cursor:pointer;opacity:.85}
+.pp:hover{opacity:1}
+.pp.cur{outline:2px solid var(--ink);opacity:1}
+.pp.ppx{background:var(--ink-faint)}
+.pp.pv1{background:var(--p1)}.pp.pv2{background:var(--p2)}.pp.pv3{background:var(--p3)}.pp.pv4{background:var(--p4)}.pp.pv5{background:var(--p5)}
 .meta{font-size:12px;color:var(--ink-faint);margin-top:3px}
 .meta .age-warn{color:var(--p2);font-weight:700}
 .note{font-size:13px;color:var(--ink-soft);margin-top:5px;font-style:italic;white-space:pre-line}
@@ -149,7 +157,9 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .ed .btns .del{color:var(--danger);border-color:var(--line);background:none}
 
 /* setup structure tree */
-.tree{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;font-size:14px}
+.tree{columns:300px;column-gap:12px;font-size:14px}
+.tree-realm{break-inside:avoid;-webkit-column-break-inside:avoid;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin:0 0 12px}
+.tree-realm .t-realm:first-child{margin-top:0}
 .tree .cnt{font-size:11.5px;font-family:var(--mono);color:var(--ink-faint);margin-left:8px}
 .t-realm{font-weight:800;font-size:15px;margin-top:12px;color:var(--accent)}
 .t-realm:first-child{margin-top:0}
@@ -729,6 +739,7 @@ function renderTabs(){
 }
 
 /* ===== card ===== */
+let pillEdit = null;
 function cardHTML(i, opts={}){
   const p = i.ongoing?'o':(i.priority||'n');
   const pillTxt = i.ongoing?'ONGOING':(i.priority?`${i.priority} ${PRIO_LABEL[i.priority].toUpperCase()}`:'UNSET');
@@ -741,7 +752,11 @@ function cardHTML(i, opts={}){
     <div class="top">
       <div class="desc ${i.status==='done'?'done-text':''}">${esc(i.desc)}</div>
       ${i.waiting?`<span class="pill pvw">⏳ WAITING</span>`:''}
-      <span class="pill pv${p}">${pillTxt}</span>
+      ${i.status==='open' && !i.ongoing
+        ? (pillEdit===i.id
+          ? `<span class="pill-pick">${[1,2,3,4,5].map(n=>`<button class="pp pv${n} ${i.priority===n?'cur':''}" data-pillset="${n}" title="${PRIO_LABEL[n]}">${n}</button>`).join('')}<button class="pp ppx" data-pillset="0" title="Clear priority">—</button></span>`
+          : `<button class="pill pv${p} pill-btn" data-pill title="Change priority">${pillTxt}</button>`)
+        : `<span class="pill pv${p}">${pillTxt}</span>`}
     </div>
     <div class="meta">${esc(path)} · added ${agesc(i)}${stale?' <span class="age-warn">· stale</span>':''}${i.effort?' · '+EFFORT_LABEL[i.effort]:''}${i.due?' · due '+i.due:''}${snoozed(i)?' · 😴 until '+i.snoozedUntil:''}${i.waiting?` · ⏳ ${esc(i.waiting.who)} since ${sinceLabel(daysSince(i.waiting.since))}`:''}${i.doneAt?' · done '+i.doneAt:''}</div>
     ${i.next?`<div class="next">▸ ${esc(i.next)}</div>`:(opts.askNext&&i.status==='open'?`<div class="next-add"><input placeholder="Break it down — what's the very next physical action?" data-nextadd></div>`:'')}
@@ -781,6 +796,20 @@ function bindCards(root){
         save(); toast(`↑ Now priority ${i.priority} · ${PRIO_LABEL[i.priority]}`); render();
       }
     };
+  });
+  root.querySelectorAll('.card [data-pill]').forEach(b=>b.onclick=()=>{
+    pillEdit = b.closest('.card').dataset.id;
+    render();
+  });
+  root.querySelectorAll('.card [data-pillset]').forEach(b=>b.onclick=()=>{
+    const i = db.items.find(x=>x.id===b.closest('.card').dataset.id);
+    const v = +b.dataset.pillset;
+    if(i){
+      i.priority = v || null;
+      if(v===1 || v===2) i.added = TODAY();
+      save(); toast(v ? `Priority ${v} · ${PRIO_LABEL[v]}` : 'Priority cleared');
+    }
+    pillEdit = null; render();
   });
   root.querySelectorAll('.card [data-step]').forEach(cb=>{
     cb.onchange = ()=>{
@@ -1733,22 +1762,24 @@ function viewTree(){
   let h = `<h2>Structure <b>· tap a name to see its tasks · ✎ rename · ＋ add</b></h2>
   <div class="tree">`;
   Object.keys(tree).sort((a,b)=>tree[b].n-tree[a].n).forEach(r=>{
-    if(editingIs('realm',null,null,r)) h += treeEditRowHTML(treeEdit, tree);
-    else h += `<div class="t-realm">${nav(r,null,null,r)}<span class="cnt">${tree[r].n}</span>${pencil('realm',null,null,r)}</div>`;
+    let block = '';
+    if(editingIs('realm',null,null,r)) block += treeEditRowHTML(treeEdit, tree);
+    else block += `<div class="t-realm">${nav(r,null,null,r)}<span class="cnt">${tree[r].n}</span>${pencil('realm',null,null,r)}</div>`;
     const st = tree[r].streams;
     Object.keys(st).sort((a,b)=>st[b].n-st[a].n).forEach(s=>{
-      if(editingIs('stream',r,null,s)) h += treeEditRowHTML(treeEdit, tree);
-      else h += `<div class="t-stream">${nav(r,s,null,s)}<span class="cnt">${st[s].n}</span>${pencil('stream',r,null,s)}</div>`;
+      if(editingIs('stream',r,null,s)) block += treeEditRowHTML(treeEdit, tree);
+      else block += `<div class="t-stream">${nav(r,s,null,s)}<span class="cnt">${st[s].n}</span>${pencil('stream',r,null,s)}</div>`;
       const cats = st[s].cats;
       Object.keys(cats).sort((a,b)=>cats[b]-cats[a]).forEach(c=>{
-        if(editingIs('cat',r,isPseudo(s)?'':s,c)) h += treeEditRowHTML(treeEdit, tree);
-        else h += `<div class="t-cat ${isPseudo(c)?'faint':''}">${nav(r,s,c,c)}<span class="cnt">${cats[c]}</span>${pencil('cat',r,s,c)}</div>`;
+        if(editingIs('cat',r,isPseudo(s)?'':s,c)) block += treeEditRowHTML(treeEdit, tree);
+        else block += `<div class="t-cat ${isPseudo(c)?'faint':''}">${nav(r,s,c,c)}<span class="cnt">${cats[c]}</span>${pencil('cat',r,s,c)}</div>`;
       });
-      if(!isPseudo(r)&&!isPseudo(s)) h += addRow('cat',r,s,'category','ind-c');
+      if(!isPseudo(r)&&!isPseudo(s)) block += addRow('cat',r,s,'category','ind-c');
     });
-    if(!isPseudo(r)) h += addRow('stream',r,null,'stream','ind-s');
+    if(!isPseudo(r)) block += addRow('stream',r,null,'stream','ind-s');
+    h += `<div class="tree-realm">${block}</div>`;
   });
-  h += addRow('realm',null,null,'realm','ind-r');
+  h += `<div class="tree-realm">${addRow('realm',null,null,'realm','ind-r')}</div>`;
   return h + `</div>`;
 }
 function editBranch(ed, newName, dest){
