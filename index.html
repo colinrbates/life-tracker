@@ -266,6 +266,12 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .rbar .trk{flex:1;background:var(--ground);border-radius:4px;height:10px;overflow:hidden}
 .rbar .fill{height:100%;background:var(--accent);border-radius:4px}
 .rbar .n{font-family:var(--mono);font-size:11px;color:var(--ink-faint);width:26px;text-align:right}
+.rbar .val{font-family:var(--mono);font-size:11px;color:var(--ink-faint);min-width:62px;text-align:right;white-space:nowrap}
+.rbar .lbl{width:150px}
+.trk.stack{display:flex}
+.trk.stack span{height:100%;display:block}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--ink-soft);margin-top:9px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
 
 /* effort picker colors */
 .prio-pick button.on.pvS{background:var(--p3)}
@@ -1344,6 +1350,30 @@ function momentumHTML(){
   open().forEach(i=>{ const r=i.realm||'—'; byRealm[r]=(byRealm[r]||0)+1; });
   const rm = Math.max(1,...Object.values(byRealm),1);
   const oldest = open().slice().sort((a,b)=>(a.added||'9999')<(b.added||'9999')?-1:1)[0];
+  const streamKey = i => [i.realm, i.stream].filter(Boolean).join(' › ') || '(unfiled)';
+  // average days from added → done, per stream
+  const clear = {};
+  db.items.forEach(i=>{
+    if(i.status!=='done' || !i.doneAt || !i.added || i.ongoing) return;
+    const days = Math.max(0, (new Date(i.doneAt+'T12:00') - new Date(i.added+'T12:00'))/864e5);
+    (clear[streamKey(i)] = clear[streamKey(i)]||[]).push(days);
+  });
+  const clearRows = Object.entries(clear)
+    .map(([k,arr])=>({k, n:arr.length, avg:arr.reduce((a,b)=>a+b,0)/arr.length}))
+    .sort((a,b)=>b.avg-a.avg).slice(0,12);
+  const cmax = Math.max(1, ...clearRows.map(r=>r.avg), 1);
+  // open-task priority mix per stream
+  const urg = {};
+  open().forEach(i=>{
+    const k = streamKey(i);
+    urg[k] = urg[k]||{total:0, byP:{}};
+    urg[k].total++;
+    const p = i.priority||0;
+    urg[k].byP[p] = (urg[k].byP[p]||0)+1;
+  });
+  const urgRows = Object.entries(urg).sort((a,b)=>b[1].total-a[1].total).slice(0,12);
+  const umax = Math.max(1, ...urgRows.map(([,v])=>v.total), 1);
+  const P_COLOR = {1:'var(--p1)',2:'var(--p2)',3:'var(--p3)',4:'var(--p4)',5:'var(--p5)',0:'var(--line)'};
   return `<div class="mo-grid">
     <div class="mo-card"><h4>Done per week</h4>
       <div class="spark">${counts.map((c,idx)=>`<div class="bar ${idx===7?'now':''}" style="height:${Math.max(4,Math.round(c/mx*100))}%" title="${c} done"></div>`).join('')}</div>
@@ -1355,6 +1385,14 @@ function momentumHTML(){
     <div class="mo-card wide"><h4>Open items by realm</h4>
       ${Object.entries(byRealm).sort((a,b)=>b[1]-a[1]).map(([r,n])=>
         `<div class="rbar"><span class="lbl">${esc(r)}</span><div class="trk"><div class="fill" style="width:${Math.round(n/rm*100)}%"></div></div><span class="n">${n}</span></div>`).join('')}</div>
+    ${clearRows.length?`<div class="mo-card wide"><h4>Average time to clear · by stream</h4>
+      ${clearRows.map(r=>
+        `<div class="rbar"><span class="lbl" title="${esc(r.k)}">${esc(r.k)}</span><div class="trk"><div class="fill" style="width:${Math.max(2,Math.round(r.avg/cmax*100))}%"></div></div><span class="val">${Math.round(r.avg)}d · ${r.n}×</span></div>`).join('')}
+      <div class="hint" style="margin:8px 0 0">Days from added to done. Slowest streams first — a long bar means tasks marinate there.</div></div>`:''}
+    ${urgRows.length?`<div class="mo-card wide"><h4>Priority mix of open tasks · by stream</h4>
+      ${urgRows.map(([k,v])=>
+        `<div class="rbar"><span class="lbl" title="${esc(k)}">${esc(k)}</span><div class="trk stack">${[1,2,3,4,5,0].map(p=>v.byP[p]?`<span style="width:${(v.byP[p]/umax*100)}%;background:${P_COLOR[p]}" title="${v.byP[p]}× ${p?'P'+p:'unset'}"></span>`:'').join('')}</div><span class="val">${v.total}</span></div>`).join('')}
+      <div class="legend">${[1,2,3,4,5].map(p=>`<span><i style="background:${P_COLOR[p]}"></i>${p} · ${PRIO_LABEL[p]}</span>`).join('')}<span><i style="background:${P_COLOR[0]}"></i>unset</span></div></div>`:''}
   </div>`;
 }
 function viewDone(){
