@@ -559,11 +559,22 @@ function initCapture(){
   const add = document.getElementById('capAdd');
   const detail = document.getElementById('capDetail');
   const toggle = document.getElementById('capToggle');
+  let capPinKey = null;
+  const applyCapContext = ()=>{
+    // browsing inside a pinned branch pre-files new tasks there
+    const clean = x => (x && !x.startsWith('(no ')) ? x : '';
+    const k = (tab==='browse' && bNode) ? [bNode.realm,bNode.stream,bNode.cat].join('|') : null;
+    if(k === capPinKey) return;
+    capPinKey = k;
+    document.getElementById('capRealm').value = k ? clean(bNode.realm) : '';
+    document.getElementById('capStream').value = k ? clean(bNode.stream) : '';
+    document.getElementById('capCat').value = k ? clean(bNode.cat) : '';
+  };
   const setCapOpen = v=>{
     detail.classList.toggle('open', v);
     toggle.textContent = v ? '▴' : '▾';
     toggle.setAttribute('aria-expanded', v);
-    if(v) fillPickers();
+    if(v){ fillPickers(); applyCapContext(); }
   };
   text.addEventListener('input', ()=>{
     add.disabled = !text.value.trim();
@@ -610,6 +621,7 @@ function initCapture(){
     add.disabled = true;
     capPrioVal=null; pp.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
     capEffortVal=null; ep.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    capPinKey = '__reset__'; // force context re-apply (or unfiled reset) on next open
     setCapOpen(false);
     toast('Added' + (it.priority?` · priority ${it.priority}`:' · triage it later'));
     render();
