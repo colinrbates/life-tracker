@@ -1044,8 +1044,7 @@ function viewTriage(){
     ? `<div class="q nop">No priority · added ${ageLabel(i)} ago</div>`
     : `<div class="q stale">Marked "${PRIO_LABEL[i.priority]}" ${ageLabel(i)} ago — still true?</div>`;
   const path = [i.realm,i.stream,i.category].filter(Boolean).join(' › ');
-  return realmChipsHTML() + `<p class="hint">One item, one decision. Be honest: if you haven't touched a "Now" in months, it isn't a Now.</p>
-  <div class="triage-card" data-id="${i.id}">
+  return realmChipsHTML() + `<div class="triage-card" data-id="${i.id}">
     ${reason}
     <div class="desc">${esc(i.desc)}</div>
     <div class="meta">${esc(path)}</div>
@@ -1343,7 +1342,7 @@ function logHabit(i, date){
 function viewHabits(){
   const h = db.items.filter(i=>i.ongoing && i.status==='open')
     .sort((a,b)=>habitUrgency(b)-habitUrgency(a));
-  let out = `<p class="hint">Recurring upkeep — these never "finish," they just need doing regularly. Most-neglected first. Set a target cadence in Edit (e.g. every 7 days) to get overdue flags.</p>`;
+  let out = '';
   if(!h.length) return out + `<div class="empty">Nothing recurring yet. Mark an item "Ongoing" when capturing it.</div>`;
   return out + h.map(habitCardHTML).join('');
 }
@@ -1375,8 +1374,7 @@ function viewSheet(){
     <option value="" ${!i.ongoing&&!i.priority?'selected':''}>—</option>
     ${[1,2,3,4,5].map(p=>`<option value="${p}" ${!i.ongoing&&i.priority===p?'selected':''}>${p}</option>`).join('')}
     <option value="o" ${i.ongoing?'selected':''}>Ongoing</option></select></td>`;
-  let h = `<p class="hint">Spreadsheet mode (experimental). Click a cell and type — edits save as you go. <b>Tab</b>/<b>Enter</b> move like a spreadsheet, <b>Esc</b> reverts a cell.</p>
-  <div class="filters">
+  let h = `<div class="filters">
     <input id="sheetQ" placeholder="Filter rows…" value="${esc(sheetQ)}">
     <button class="setup-btn save" id="sheetAdd">＋ Add row</button>
     <span class="hint" style="margin:0;align-self:center">${rows.length} row${rows.length===1?'':'s'}</span>
@@ -1541,7 +1539,7 @@ function viewDone(){
   const d = db.items.filter(i=>i.status==='done' && !i.ongoing).sort((a,b)=>(b.doneAt||'')<(a.doneAt||'')?-1:1);
   let h = momentumHTML();
   if(!d.length) return h + `<div class="empty">Nothing completed yet — go make this list grow.</div>`;
-  return h + `<p class="hint">${d.length} things you actually finished. Revisit when you feel like you're getting nowhere.</p>`
+  return h
     + d.map(i=>cardHTML(i)).join('');
 }
 
@@ -1627,7 +1625,6 @@ function viewTree(){
   const nav = (r,s,c,name,cls)=>`<span class="t-name ${cls||''}" role="button" tabindex="0" data-nav data-r="${esc(r)}"${s?` data-s="${esc(s)}"`:''}${c?` data-c="${esc(c)}"`:''}>${esc(name)}</span>`;
 
   let h = `<h2>Structure <b>· tap a name to see its tasks · ✎ rename · ＋ add</b></h2>
-  <p class="hint">Renames apply to every task under that exact branch — a "Tech" under Hobbies won't touch a "Tech" elsewhere. Use the destination dropdown while editing to move a category or stream to a new home.</p>
   <div class="tree">`;
   Object.keys(tree).sort((a,b)=>tree[b].n-tree[a].n).forEach(r=>{
     if(editingIs('realm',null,null,r)) h += treeEditRowHTML(treeEdit, tree);
