@@ -814,7 +814,7 @@ function openWaiting(i){
 /* ===== views ===== */
 function render(){
   renderTabs();
-  document.getElementById('capture').style.display = ['tree','triage','done','review'].includes(tab) ? 'none' : '';
+  document.getElementById('capture').style.display = ['today','sheet','tree','triage','done','review'].includes(tab) ? 'none' : '';
   const v = document.getElementById('view');
   if(tab==='today') v.innerHTML = viewToday();
   if(tab==='triage') v.innerHTML = viewTriage();
