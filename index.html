@@ -200,6 +200,22 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .q-btn{border:none;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:3px 8px;border-radius:6px;font-weight:700;flex-shrink:0}
 .q-btn:hover{color:var(--accent);background:var(--accent-soft)}
 
+/* sheet (spreadsheet mode) */
+.sheet-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table.sheet{border-collapse:collapse;width:100%;min-width:1080px;font-size:13px}
+.sheet th{position:sticky;top:0;background:var(--ground);color:var(--ink-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:7px 9px;border-bottom:2px solid var(--line);z-index:2}
+.sheet td{border:1px solid var(--line);padding:5px 9px;vertical-align:top;background:var(--surface)}
+.sheet .sc{cursor:text;min-width:70px}
+.sheet .sc:focus{outline:2px solid var(--accent);outline-offset:-2px;background:var(--accent-soft)}
+.sheet .w-desc{min-width:220px}
+.sheet .w-next{min-width:160px}
+.sheet .w-notes{min-width:180px;color:var(--ink-soft)}
+.sheet .sc-ro{color:var(--ink-faint);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.sheet .sc-fixed{text-align:center}
+.sheet .s-prio{border:1px solid var(--line);border-radius:6px;background:var(--ground);padding:3px 4px;font-size:12.5px}
+.sheet tr.s-done td{opacity:.45;text-decoration:line-through}
+.sheet input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+
 /* sort direction toggle */
 .sort-btn{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:7px;padding:2px 9px;font-size:14px;cursor:pointer;margin-left:8px;vertical-align:middle;line-height:1.3}
 .sort-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
@@ -650,7 +666,7 @@ window.addEventListener('popstate', e=>{
   else { tab = 'today'; bNode = null; }
   render(); window.scrollTo(0,0);
 });
-const TABS = [['today','Today'],['tree','Tree'],['browse','Browse'],['habits','Recurring'],['triage','Triage'],['done','Done']];
+const TABS = [['today','Today'],['tree','Tree'],['browse','Browse'],['sheet','Sheet'],['habits','Recurring'],['triage','Triage'],['done','Done']];
 function renderTabs(){
   const n = document.getElementById('tabs');
   const tn = db.items.filter(i=>needsTriage(i)&&inRealm(i)).length;
@@ -753,6 +769,7 @@ function render(){
   if(tab==='habits') v.innerHTML = viewHabits();
   if(tab==='done') v.innerHTML = viewDone();
   if(tab==='tree') v.innerHTML = viewTree();
+  if(tab==='sheet') v.innerHTML = viewSheet();
   if(tab==='review') v.innerHTML = viewReview();
   bindCards(v);
   if(tab==='triage') bindTriage(v);
@@ -760,6 +777,7 @@ function render(){
   if(tab==='habits'||tab==='today'||tab==='browse') bindHabits(v);
   if(tab==='today') bindQuick(v);
   if(tab==='tree') bindTree(v);
+  if(tab==='sheet') bindSheet(v);
   if(tab==='review') bindReview(v);
   bindRealmChips(v);
   bindBanners(v);
@@ -1339,6 +1357,122 @@ function bindHabits(v){
     const i = db.items.find(x=>x.id===inp.closest('.card').dataset.id);
     logHabit(i, inp.value); toast(`Logged for ${inp.value}`); render();
   });
+}
+
+/* Sheet: spreadsheet-style editing (experimental) */
+let sheetQ = '';
+const SHEET_FIELDS = ['realm','stream','category','desc','due','next','notes'];
+function viewSheet(){
+  let rows = db.items.filter(i=>i.status==='open');
+  if(sheetQ){
+    const q = sheetQ.toLowerCase();
+    rows = rows.filter(i=>(i.desc+' '+(i.notes||'')+' '+(i.category||'')+' '+(i.stream||'')+' '+(i.realm||'')).toLowerCase().includes(q));
+  }
+  rows.sort((a,b)=>(a.realm||'').localeCompare(b.realm||'') || (a.stream||'').localeCompare(b.stream||'')
+    || (a.category||'').localeCompare(b.category||'') || (a.added||'').localeCompare(b.added||''));
+  const cell = (i,f,cls) => `<td class="sc ${cls||''}" contenteditable="true" spellcheck="false" data-id="${i.id}" data-f="${f}">${esc(i[f]||'')}</td>`;
+  const prioCell = i => `<td class="sc-fixed"><select class="s-prio" data-id="${i.id}">
+    <option value="" ${!i.ongoing&&!i.priority?'selected':''}>—</option>
+    ${[1,2,3,4,5].map(p=>`<option value="${p}" ${!i.ongoing&&i.priority===p?'selected':''}>${p}</option>`).join('')}
+    <option value="o" ${i.ongoing?'selected':''}>Ongoing</option></select></td>`;
+  let h = `<p class="hint">Spreadsheet mode (experimental). Click a cell and type — edits save as you go. <b>Tab</b>/<b>Enter</b> move like a spreadsheet, <b>Esc</b> reverts a cell.</p>
+  <div class="filters">
+    <input id="sheetQ" placeholder="Filter rows…" value="${esc(sheetQ)}">
+    <button class="setup-btn save" id="sheetAdd">＋ Add row</button>
+    <span class="hint" style="margin:0;align-self:center">${rows.length} row${rows.length===1?'':'s'}</span>
+  </div>
+  <div class="sheet-wrap"><table class="sheet"><thead><tr>
+    <th title="Done">✓</th><th>Realm</th><th>Stream</th><th>Category</th><th class="w-desc">Task</th><th>Pri</th><th>Due</th><th class="w-next">Next action</th><th class="w-notes">Notes</th><th>Added</th><th></th>
+  </tr></thead><tbody>`;
+  rows.forEach(i=>{
+    h += `<tr data-row="${i.id}">
+      <td class="sc-fixed"><input type="checkbox" data-sheetdone data-id="${i.id}" aria-label="Done"></td>
+      ${cell(i,'realm')}${cell(i,'stream')}${cell(i,'category')}${cell(i,'desc','w-desc')}
+      ${prioCell(i)}
+      ${cell(i,'due')}
+      ${cell(i,'next','w-next')}${cell(i,'notes','w-notes')}
+      <td class="sc-ro">${i.added||''}</td>
+      <td class="sc-fixed"><button class="q-btn" data-sheetdel data-id="${i.id}" aria-label="Delete">✕</button></td>
+    </tr>`;
+  });
+  h += `</tbody></table></div>`;
+  return h;
+}
+function bindSheet(v){
+  const table = v.querySelector('.sheet'); if(!table) return;
+  const commit = td=>{
+    const i = db.items.find(x=>x.id===td.dataset.id); if(!i) return;
+    const f = td.dataset.f;
+    let val = td.textContent.replace(/\n/g,' ').trim();
+    if(f==='due' && val && !/^\d{4}-\d{2}-\d{2}$/.test(val)){
+      toast('Due needs yyyy-mm-dd'); td.textContent = i.due||''; return;
+    }
+    const cur = i[f]||'';
+    if(val===cur) return;
+    i[f] = f==='due' ? (val||null) : val;
+    save();
+  };
+  table.addEventListener('focusout', e=>{
+    if(e.target.classList?.contains('sc')) commit(e.target);
+  });
+  table.addEventListener('keydown', e=>{
+    const td = e.target;
+    if(!td.classList?.contains('sc')) return;
+    if(e.key==='Escape'){
+      const i = db.items.find(x=>x.id===td.dataset.id);
+      if(i) td.textContent = i[td.dataset.f]||'';
+      td.blur(); return;
+    }
+    if(e.key==='Enter' || e.key==='Tab'){
+      e.preventDefault();
+      commit(td);
+      const cells = [...table.querySelectorAll('.sc')];
+      const idx = cells.indexOf(td);
+      let next = null;
+      if(e.key==='Tab') next = cells[idx + (e.shiftKey?-1:1)];
+      else {
+        // Enter: same column, next row
+        const row = td.closest('tr');
+        const colCells = [...row.querySelectorAll('.sc')];
+        const col = colCells.indexOf(td);
+        const rows = [...table.querySelectorAll('tbody tr')];
+        const nrow = rows[rows.indexOf(row)+1];
+        if(nrow) next = [...nrow.querySelectorAll('.sc')][col];
+      }
+      if(next){ next.focus(); document.getSelection()?.selectAllChildren(next); }
+    }
+  });
+  table.querySelectorAll('.s-prio').forEach(sel=>sel.onchange = ()=>{
+    const i = db.items.find(x=>x.id===sel.dataset.id); if(!i) return;
+    if(sel.value==='o'){ i.ongoing = true; }
+    else { i.ongoing = false; i.priority = sel.value ? +sel.value : null; }
+    save();
+  });
+  table.querySelectorAll('[data-sheetdone]').forEach(cb=>cb.onchange = ()=>{
+    const i = db.items.find(x=>x.id===cb.dataset.id); if(!i) return;
+    i.status = cb.checked ? 'done' : 'open';
+    i.doneAt = cb.checked ? TODAY() : null;
+    cb.closest('tr').classList.toggle('s-done', cb.checked);
+    save(); if(cb.checked) toast('Done 🎉');
+  });
+  table.querySelectorAll('[data-sheetdel]').forEach(b=>b.onclick = ()=>{
+    const idx = db.items.findIndex(x=>x.id===b.dataset.id);
+    if(idx<0) return;
+    const [it] = db.items.splice(idx,1);
+    b.closest('tr').remove();
+    save();
+    undoFn = ()=>{ db.items.splice(idx,0,it); save(); render(); };
+    toast('Row deleted', true);
+  });
+  v.querySelector('#sheetAdd').onclick = ()=>{
+    db.items.unshift({id:uid(), added:TODAY(), realm:'', stream:'', category:'', desc:'',
+      priority:null, ongoing:false, next:'', notes:'', due:null, status:'open',
+      doneAt:null, snoozedUntil:null, someday:false, effort:null, waiting:null});
+    render();
+    const cell = document.querySelector('.sheet tbody tr .sc'); if(cell) cell.focus();
+  };
+  const q = v.querySelector('#sheetQ');
+  q.oninput = ()=>{ sheetQ=q.value; clearTimeout(q._t); q._t=setTimeout(render,300); };
 }
 
 /* Done + momentum */
