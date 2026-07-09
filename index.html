@@ -1766,7 +1766,7 @@ function viewTree(){
     if(editingIs('realm',null,null,r)) block += treeEditRowHTML(treeEdit, tree);
     else block += `<div class="t-realm">${nav(r,null,null,r)}<span class="cnt">${tree[r].n}</span>${pencil('realm',null,null,r)}</div>`;
     const st = tree[r].streams;
-    Object.keys(st).sort((a,b)=>st[b].n-st[a].n).forEach(s=>{
+    Object.keys(st).sort((a,b)=>((isPseudo(a)?1:0)-(isPseudo(b)?1:0)) || a.localeCompare(b)).forEach(s=>{
       if(editingIs('stream',r,null,s)) block += treeEditRowHTML(treeEdit, tree);
       else block += `<div class="t-stream">${nav(r,s,null,s)}<span class="cnt">${st[s].n}</span>${pencil('stream',r,null,s)}</div>`;
       const cats = st[s].cats;
