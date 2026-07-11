@@ -219,6 +219,25 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .q-btn{border:none;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:3px 8px;border-radius:6px;font-weight:700;flex-shrink:0}
 .q-btn:hover{color:var(--accent);background:var(--accent-soft)}
 
+/* songs */
+.song-board{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:700px){.song-board{grid-template-columns:1fr 1fr}}
+.song-col{border:1px solid var(--line);border-radius:var(--radius);padding:8px;min-height:70px}
+.song-col-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-weight:800;margin-bottom:8px;display:flex;gap:6px;align-items:baseline}
+.song-empty{color:var(--ink-faint);text-align:center;padding:8px 0;font-size:13px}
+.song{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:9px 10px;margin-bottom:8px}
+.song-t{font-weight:700;font-size:13.5px;cursor:pointer;overflow-wrap:anywhere}
+.song-t:hover{color:var(--accent)}
+.song-m{display:flex;gap:7px;font-size:10.5px;color:var(--ink-faint);margin-top:4px;align-items:center;flex-wrap:wrap}
+.song-proj{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 7px;font-weight:700}
+.song-acts{display:flex;gap:4px;margin-top:7px;justify-content:space-between}
+.song-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:8px}
+.lyr{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--p2);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.lyr-t{white-space:pre-line;font-size:13.5px;font-style:italic}
+.lyr-acts{display:flex;gap:8px;margin-top:8px;align-items:center}
+.lyr-acts select{border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:var(--ground);font-size:12.5px;max-width:230px;min-width:0}
+.lyr-mini{display:flex;gap:8px;align-items:center;justify-content:space-between;background:var(--ground);border:1px solid var(--line);border-radius:7px;padding:6px 10px;margin-bottom:5px;font-size:12.5px;font-style:italic}
+
 /* sheet (spreadsheet mode) */
 .sheet-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
 table.sheet{border-collapse:collapse;width:100%;min-width:1080px;font-size:13px}
@@ -472,6 +491,8 @@ function migrate(d){
   }
   d.qlists.forEach(l=>{ l.items = (l.items||[]).filter(q=>!q.done || !q.doneAt || q.doneAt >= addDays(-3)); });
   d.settings.place = '';
+  d.songs = d.songs || [];
+  d.lyrics = d.lyrics || [];
   // drop filter entries for realms that no longer exist
   const liveRealms = new Set();
   d.items.forEach(i=>{ if(i.status==='open' && i.realm) liveRealms.add(i.realm); });
@@ -730,7 +751,7 @@ window.addEventListener('popstate', e=>{
   else { tab = 'today'; bNode = null; }
   render(); window.scrollTo(0,0);
 });
-const TABS = [['today','Today'],['tree','Tree'],['browse','Browse'],['sheet','Sheet'],['habits','Recurring'],['triage','Triage'],['done','Done']];
+const TABS = [['today','Today'],['tree','Tree'],['browse','Browse'],['sheet','Sheet'],['songs','Songs'],['habits','Recurring'],['triage','Triage'],['done','Done']];
 function isStandalone(){
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     || window.navigator.standalone === true;
@@ -852,7 +873,7 @@ function openWaiting(i){
 /* ===== views ===== */
 function render(){
   renderTabs();
-  document.getElementById('capture').style.display = ['today','sheet','tree','triage','done','review'].includes(tab) ? 'none' : '';
+  document.getElementById('capture').style.display = ['today','sheet','songs','tree','triage','done','review'].includes(tab) ? 'none' : '';
   const v = document.getElementById('view');
   if(tab==='today') v.innerHTML = viewToday();
   if(tab==='triage') v.innerHTML = viewTriage();
@@ -861,6 +882,7 @@ function render(){
   if(tab==='done') v.innerHTML = viewDone();
   if(tab==='tree') v.innerHTML = viewTree();
   if(tab==='sheet') v.innerHTML = viewSheet();
+  if(tab==='songs') v.innerHTML = viewSongs();
   if(tab==='review') v.innerHTML = viewReview();
   bindCards(v);
   if(tab==='triage') bindTriage(v);
@@ -869,6 +891,7 @@ function render(){
   if(tab==='today') bindQuick(v);
   if(tab==='tree') bindTree(v);
   if(tab==='sheet') bindSheet(v);
+  if(tab==='songs') bindSongs(v);
   if(tab==='review') bindReview(v);
   bindRealmChips(v);
   bindBanners(v);
@@ -1615,6 +1638,191 @@ function bindSheet(v){
   };
   const q = v.querySelector('#sheetQ');
   q.oninput = ()=>{ sheetQ=q.value; clearTimeout(q._t); q._t=setTimeout(render,300); };
+}
+
+/* Songs: idea pipeline + lyric pool */
+const SONG_STAGES = [['spark','💡 Spark'],['sketch','🛠 Sketch'],['demo','🎛 Demo'],['polish','🎚 Polish'],['done','✅ Done'],['shelf','💤 Shelved']];
+const SONG_FLOW = ['spark','sketch','demo','polish','done'];
+let songFilter = '', songShowDone = false, songShowShelf = false, lyricDraft = '';
+function stageLabel(k){ const s = SONG_STAGES.find(x=>x[0]===k); return s ? s[1] : k; }
+function songCardHTML(s){
+  const days = daysSince(s.stageAt || s.added);
+  const nLyr = db.lyrics.filter(l=>l.songId===s.id).length;
+  const fi = SONG_FLOW.indexOf(s.stage);
+  const canBack = s.stage==='done' || fi>0;
+  const canFwd = s.stage==='shelf' || (fi>=0 && fi<SONG_FLOW.length-1);
+  return `<div class="song" data-sid="${s.id}">
+    <div class="song-t" role="button" tabindex="0" data-songedit>${esc(s.title)}</div>
+    <div class="song-m">${s.project?`<span class="song-proj">${esc(s.project)}</span>`:''}${nLyr?`<span title="${nLyr} lyric scrap${nLyr===1?'':'s'} attached">¶${nLyr}</span>`:''}<span>${sinceLabel(days)==='never logged'?'new':sinceLabel(days)}</span></div>
+    <div class="song-acts">
+      <button class="q-btn" data-smove="-1" ${canBack?'':'disabled'} title="Back a stage">◀</button>
+      <button class="q-btn" data-smove="1" ${canFwd?'':'disabled'} title="${s.stage==='shelf'?'Revive':'Advance a stage'}">${s.stage==='shelf'?'▶ revive':'▶'}</button>
+    </div>
+  </div>`;
+}
+function viewSongs(){
+  const songs = db.songs.filter(s=>!songFilter || s.project===songFilter);
+  const projects = [...new Set(db.songs.map(s=>s.project).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  let h = `<div class="quick">
+    <div class="q-head">🎵 New song idea</div>
+    <div class="q-add">
+      <input id="songNew" placeholder="Title, riff description, hummable fragment…" autocomplete="off">
+      <input id="songNewProj" list="songProjList" placeholder="Project" style="max-width:120px" autocomplete="off">
+      <datalist id="songProjList">${projects.map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
+      <button class="q-commit" id="songAdd" aria-label="Add song idea" title="Add song idea">✓</button>
+    </div>
+  </div>`;
+  if(projects.length){
+    h += `<div class="chip-row">${projects.map(p=>`<button class="chip ${songFilter===p?'on':''}" data-sproj="${esc(p)}">${esc(p)}</button>`).join('')}</div>`;
+  }
+  h += `<div class="song-board">` + SONG_FLOW.slice(0,4).map(st=>{
+    const col = songs.filter(s=>s.stage===st)
+      .sort((a,b)=>(b.stageAt||b.added||'').localeCompare(a.stageAt||a.added||''));
+    return `<div class="song-col"><div class="song-col-h">${stageLabel(st)}<span class="cnt">${col.length}</span></div>${col.map(songCardHTML).join('')||'<div class="song-empty">—</div>'}</div>`;
+  }).join('') + `</div>`;
+  const doneList = songs.filter(s=>s.stage==='done'), shelfList = songs.filter(s=>s.stage==='shelf');
+  h += `<div class="chip-row" style="margin-top:12px">
+    <button class="chip ${songShowDone?'on':''}" data-stoggle="Done">✅ Done (${doneList.length})</button>
+    <button class="chip ${songShowShelf?'on':''}" data-stoggle="Shelf">💤 Shelved (${shelfList.length})</button>
+  </div>`;
+  if(songShowDone && doneList.length) h += `<div class="song-strip">${doneList.map(songCardHTML).join('')}</div>`;
+  if(songShowShelf && shelfList.length) h += `<div class="song-strip">${shelfList.map(songCardHTML).join('')}</div>`;
+  const pool = db.lyrics.filter(l=>!l.songId);
+  h += `<h2>¶ Lyric pool <b>· ${pool.length} loose scrap${pool.length===1?'':'s'}</b></h2>
+  <div class="quick">
+    <div class="q-add">
+      <textarea id="lyrNew" rows="${Math.min(8, Math.max(2, lyricDraft.split('\n').length))}" placeholder="A line, a verse, a phrase worth keeping — one scrap per ✓">${esc(lyricDraft)}</textarea>
+      <button class="q-commit" id="lyrAdd" aria-label="Keep this scrap" title="Keep this scrap">✓</button>
+    </div>
+  </div>`;
+  const attachOpts = db.songs.filter(s=>s.stage!=='done')
+    .sort((a,b)=>a.title.localeCompare(b.title))
+    .map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join('');
+  h += pool.map(l=>`<div class="lyr" data-lid="${l.id}">
+    <div class="lyr-t">${esc(l.text)}</div>
+    <div class="lyr-acts">
+      <select data-lattach><option value="">→ attach to song…</option>${attachOpts}</select>
+      <span class="hint" style="margin:0">${l.added||''}</span>
+      <button class="q-btn" data-ldel aria-label="Delete scrap">✕</button>
+    </div>
+  </div>`).join('');
+  return h;
+}
+function bindSongs(v){
+  const titleIn = v.querySelector('#songNew'); if(!titleIn) return;
+  const addSong = ()=>{
+    const t = titleIn.value.trim(); if(!t) return;
+    db.songs.unshift({id:uid(), title:t, project:v.querySelector('#songNewProj').value.trim(),
+      stage:'spark', stageAt:TODAY(), added:TODAY(), tempo:'', key:'', notes:'', lyrics:'', prevStage:null});
+    titleIn.value='';
+    save(); toast('💡 Sparked'); render();
+    const ni = document.getElementById('songNew'); if(ni) ni.focus();
+  };
+  titleIn.addEventListener('keydown', e=>{ if(e.key==='Enter') addSong(); });
+  v.querySelector('#songAdd').onclick = addSong;
+  v.querySelectorAll('[data-sproj]').forEach(b=>b.onclick=()=>{
+    songFilter = songFilter===b.dataset.sproj ? '' : b.dataset.sproj; render();
+  });
+  v.querySelectorAll('[data-stoggle]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.stoggle==='Done') songShowDone = !songShowDone; else songShowShelf = !songShowShelf;
+    render();
+  });
+  v.querySelectorAll('[data-smove]').forEach(b=>b.onclick=()=>{
+    const s = db.songs.find(x=>x.id===b.closest('.song').dataset.sid); if(!s) return;
+    const dir = +b.dataset.smove;
+    let next;
+    if(s.stage==='shelf' && dir===1) next = s.prevStage || 'spark';
+    else if(s.stage==='done' && dir===-1) next = 'polish';
+    else {
+      const fi = SONG_FLOW.indexOf(s.stage);
+      next = SONG_FLOW[Math.min(SONG_FLOW.length-1, Math.max(0, fi+dir))];
+    }
+    if(next && next!==s.stage){
+      s.stage = next; s.stageAt = TODAY();
+      save(); toast(next==='done' ? '✅ Finished — go play it 🎉' : `→ ${stageLabel(next)}`); render();
+    }
+  });
+  v.querySelectorAll('[data-songedit]').forEach(el=>{
+    const open = ()=>openSongEditor(db.songs.find(x=>x.id===el.closest('.song').dataset.sid));
+    el.onclick = open;
+    el.onkeydown = e=>{ if(e.key==='Enter') open(); };
+  });
+  const lyr = v.querySelector('#lyrNew');
+  lyr.addEventListener('input', ()=>{
+    lyricDraft = lyr.value;
+    lyr.rows = Math.min(8, Math.max(2, lyr.value.split('\n').length));
+  });
+  const addLyr = ()=>{
+    const t = lyr.value.trim(); if(!t) return;
+    db.lyrics.unshift({id:uid(), text:t, added:TODAY(), songId:null});
+    lyricDraft = '';
+    save(); toast('¶ Kept'); render();
+  };
+  lyr.addEventListener('keydown', e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) addLyr(); });
+  v.querySelector('#lyrAdd').onclick = addLyr;
+  v.querySelectorAll('[data-lattach]').forEach(sel=>sel.onchange=()=>{
+    if(!sel.value) return;
+    const l = db.lyrics.find(x=>x.id===sel.closest('.lyr').dataset.lid);
+    const s = db.songs.find(x=>x.id===sel.value);
+    if(l && s){ l.songId = s.id; save(); toast(`¶ → "${s.title}"`); render(); }
+  });
+  v.querySelectorAll('[data-ldel]').forEach(b=>b.onclick=()=>{
+    const idx = db.lyrics.findIndex(x=>x.id===b.closest('.lyr').dataset.lid);
+    if(idx<0) return;
+    const [l] = db.lyrics.splice(idx,1); save();
+    undoFn = ()=>{ db.lyrics.splice(idx,0,l); save(); render(); };
+    toast('Scrap deleted', true); render();
+  });
+}
+function openSongEditor(s){
+  if(!s) return;
+  const dlg = document.getElementById('editor');
+  const attached = db.lyrics.filter(l=>l.songId===s.id);
+  const projects = [...new Set(db.songs.map(x=>x.project).filter(Boolean))].sort();
+  dlg.innerHTML = `<div class="ed">
+    <h3>🎵 Song</h3>
+    <div class="field"><label>Title</label><input id="sgTitle" value="${esc(s.title)}"></div>
+    <div class="cap-grid">
+      <div class="field"><label>Project</label><input id="sgProj" value="${esc(s.project||'')}" list="sgProjList"><datalist id="sgProjList">${projects.map(p=>`<option value="${esc(p)}">`).join('')}</datalist></div>
+      <div class="field"><label>Stage</label><select id="sgStage">${SONG_STAGES.map(([k,l])=>`<option value="${k}" ${s.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label>Key · tempo</label><div style="display:flex;gap:6px"><input id="sgKey" value="${esc(s.key||'')}" placeholder="Am" style="width:52px"><input id="sgTempo" value="${esc(s.tempo||'')}" placeholder="120" style="width:56px"></div></div>
+    </div>
+    <div class="field"><label>Lyrics</label><textarea id="sgLyrics" rows="6" placeholder="The song's own lyric sheet…">${esc(s.lyrics||'')}</textarea></div>
+    <div class="field"><label>Notes</label><textarea id="sgNotes" rows="2" placeholder="Where the demo lives, what's missing, next move…">${esc(s.notes||'')}</textarea></div>
+    ${attached.length?`<div class="field"><label>Attached scraps</label>${attached.map(l=>
+      `<div class="lyr-mini" data-lid="${l.id}"><span>${esc(l.text.split('\n')[0].slice(0,60))}${l.text.length>60||l.text.includes('\n')?'…':''}</span><button class="q-btn" data-ldetach title="Back to the pool">⏏</button></div>`).join('')}</div>`:''}
+    <div class="btns">
+      <button class="del" id="sgDel">Delete</button>
+      <div class="right"><button id="sgCancel">Cancel</button><button class="save" id="sgSave">Save</button></div>
+    </div>
+  </div>`;
+  dlg.querySelectorAll('[data-ldetach]').forEach(b=>b.onclick=()=>{
+    const l = db.lyrics.find(x=>x.id===b.closest('.lyr-mini').dataset.lid);
+    if(l){ l.songId = null; save(); b.closest('.lyr-mini').remove(); toast('¶ back in the pool'); render(); }
+  });
+  dlg.querySelector('#sgCancel').onclick = ()=>dlg.close();
+  dlg.querySelector('#sgDel').onclick = ()=>{
+    const idx = db.songs.indexOf(s);
+    db.lyrics.forEach(l=>{ if(l.songId===s.id) l.songId=null; });
+    db.songs.splice(idx,1); save();
+    undoFn = ()=>{ db.songs.splice(idx,0,s); save(); render(); };
+    dlg.close(); toast('Song deleted — scraps returned to pool', true); render();
+  };
+  dlg.querySelector('#sgSave').onclick = ()=>{
+    s.title = dlg.querySelector('#sgTitle').value.trim() || s.title;
+    s.project = dlg.querySelector('#sgProj').value.trim();
+    const newStage = dlg.querySelector('#sgStage').value;
+    if(newStage !== s.stage){
+      if(newStage==='shelf') s.prevStage = s.stage;
+      s.stage = newStage; s.stageAt = TODAY();
+    }
+    s.key = dlg.querySelector('#sgKey').value.trim();
+    s.tempo = dlg.querySelector('#sgTempo').value.trim();
+    s.lyrics = dlg.querySelector('#sgLyrics').value;
+    s.notes = dlg.querySelector('#sgNotes').value.trim();
+    save(); dlg.close(); toast('Saved'); render();
+  };
+  dlg.showModal();
 }
 
 /* Done + momentum */
