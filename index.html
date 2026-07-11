@@ -231,6 +231,14 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .song-m{display:flex;gap:7px;font-size:10.5px;color:var(--ink-faint);margin-top:4px;align-items:center;flex-wrap:wrap}
 .song-proj{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 7px;font-weight:700}
 .song-acts{display:flex;gap:4px;margin-top:7px;justify-content:space-between}
+.song-next{font-size:11.5px;font-weight:600;color:var(--accent);margin-top:5px;cursor:pointer}
+.song-lnk{text-decoration:none;font-size:11px}
+.sg-steps{display:flex;flex-direction:column;gap:4px}
+.sg-step{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sg-step label{display:flex;gap:8px;align-items:center;font-size:13.5px;cursor:pointer;min-width:0}
+.sg-step input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;flex-shrink:0}
+.sg-step .sdone-t{text-decoration:line-through;color:var(--ink-faint)}
+#sgStepNew{border:1px dashed var(--ink-faint);border-radius:7px;padding:6px 9px;background:none;font-size:13px;margin-top:4px}
 .song-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:8px}
 .lyr{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--p2);border-radius:8px;padding:10px 12px;margin-bottom:8px}
 .lyr-t{white-space:pre-line;font-size:13.5px;font-style:italic}
@@ -440,6 +448,7 @@ table.sheet{border-collapse:collapse;width:100%;min-width:1080px;font-size:13px}
 const SEED = []; // seed removed — new accounts start fresh; data lives in Supabase
 const KEY = 'lifetracker.v1';
 const PRIO_LABEL = {1:'Now',2:'Next',3:'Soon',4:'Later',5:'Parked'};
+const SONG_TEMPLATE = ['Sketch structure','Demo scratch track','Add instruments','Record vocals','Harmonies & extras','Rough mix','Fine mix','Master / bounce'];
 const localISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const TODAY = () => localISO(new Date());
 const uid = () => 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -493,6 +502,12 @@ function migrate(d){
   d.settings.place = '';
   d.songs = d.songs || [];
   d.lyrics = d.lyrics || [];
+  d.songs.forEach(s=>{
+    if(!s.steps) s.steps = SONG_TEMPLATE.map(t=>({t, done:false}));
+    if(s.instruments===undefined) s.instruments = '';
+    if(s.link===undefined) s.link = '';
+    if(s.finishedAt===undefined) s.finishedAt = null;
+  });
   // drop filter entries for realms that no longer exist
   const liveRealms = new Set();
   d.items.forEach(i=>{ if(i.status==='open' && i.realm) liveRealms.add(i.realm); });
@@ -1651,9 +1666,14 @@ function songCardHTML(s){
   const fi = SONG_FLOW.indexOf(s.stage);
   const canBack = s.stage==='done' || fi>0;
   const canFwd = s.stage==='shelf' || (fi>=0 && fi<SONG_FLOW.length-1);
+  const steps = s.steps||[];
+  const doneSteps = steps.filter(x=>x.done).length;
+  const nextStep = steps.find(x=>!x.done);
+  const isUrl = s.link && /^https?:\/\//.test(s.link);
   return `<div class="song" data-sid="${s.id}">
     <div class="song-t" role="button" tabindex="0" data-songedit>${esc(s.title)}</div>
-    <div class="song-m">${s.project?`<span class="song-proj">${esc(s.project)}</span>`:''}${nLyr?`<span title="${nLyr} lyric scrap${nLyr===1?'':'s'} attached">¶${nLyr}</span>`:''}<span>${sinceLabel(days)==='never logged'?'new':sinceLabel(days)}</span></div>
+    <div class="song-m">${s.project?`<span class="song-proj">${esc(s.project)}</span>`:''}${nLyr?`<span title="${nLyr} lyric scrap${nLyr===1?'':'s'} attached">¶${nLyr}</span>`:''}${isUrl?`<a class="song-lnk" href="${esc(s.link)}" target="_blank" rel="noopener" title="${esc(s.link)}">🔗</a>`:''}<span>${sinceLabel(days)==='never logged'?'new':sinceLabel(days)}</span></div>
+    ${steps.length && s.stage!=='done' && s.stage!=='shelf' ? `<div class="song-next" role="button" tabindex="0" data-songedit title="Open checklist">${nextStep?`▸ ${esc(nextStep.t)}`:'✓ steps complete'} · ${doneSteps}/${steps.length}</div>` : ''}
     <div class="song-acts">
       <button class="q-btn" data-smove="-1" ${canBack?'':'disabled'} title="Back a stage">◀</button>
       <button class="q-btn" data-smove="1" ${canFwd?'':'disabled'} title="${s.stage==='shelf'?'Revive':'Advance a stage'}">${s.stage==='shelf'?'▶ revive':'▶'}</button>
@@ -1713,7 +1733,8 @@ function bindSongs(v){
   const addSong = ()=>{
     const t = titleIn.value.trim(); if(!t) return;
     db.songs.unshift({id:uid(), title:t, project:v.querySelector('#songNewProj').value.trim(),
-      stage:'spark', stageAt:TODAY(), added:TODAY(), tempo:'', key:'', notes:'', lyrics:'', prevStage:null});
+      stage:'spark', stageAt:TODAY(), added:TODAY(), tempo:'', key:'', notes:'', lyrics:'', prevStage:null,
+      steps:SONG_TEMPLATE.map(x=>({t:x, done:false})), instruments:'', link:'', finishedAt:null});
     titleIn.value='';
     save(); toast('💡 Sparked'); render();
     const ni = document.getElementById('songNew'); if(ni) ni.focus();
@@ -1739,6 +1760,7 @@ function bindSongs(v){
     }
     if(next && next!==s.stage){
       s.stage = next; s.stageAt = TODAY();
+      s.finishedAt = next==='done' ? TODAY() : null;
       save(); toast(next==='done' ? '✅ Finished — go play it 🎉' : `→ ${stageLabel(next)}`); render();
     }
   });
@@ -1779,16 +1801,24 @@ function openSongEditor(s){
   const dlg = document.getElementById('editor');
   const attached = db.lyrics.filter(l=>l.songId===s.id);
   const projects = [...new Set(db.songs.map(x=>x.project).filter(Boolean))].sort();
+  const steps = s.steps||[];
+  const doneSteps = steps.filter(x=>x.done).length;
   dlg.innerHTML = `<div class="ed">
-    <h3>🎵 Song</h3>
+    <h3>🎵 Song <span class="hint" style="margin:0 0 0 8px;display:inline">started ${s.added||'—'}${s.finishedAt?` · finished ${s.finishedAt}`:''}</span></h3>
     <div class="field"><label>Title</label><input id="sgTitle" value="${esc(s.title)}"></div>
     <div class="cap-grid">
       <div class="field"><label>Project</label><input id="sgProj" value="${esc(s.project||'')}" list="sgProjList"><datalist id="sgProjList">${projects.map(p=>`<option value="${esc(p)}">`).join('')}</datalist></div>
       <div class="field"><label>Stage</label><select id="sgStage">${SONG_STAGES.map(([k,l])=>`<option value="${k}" ${s.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>
       <div class="field"><label>Key · tempo</label><div style="display:flex;gap:6px"><input id="sgKey" value="${esc(s.key||'')}" placeholder="Am" style="width:52px"><input id="sgTempo" value="${esc(s.tempo||'')}" placeholder="120" style="width:56px"></div></div>
     </div>
+    <div class="field"><label>Production steps · ${doneSteps}/${steps.length}</label>
+      <div class="sg-steps">${steps.map((st,n)=>
+        `<div class="sg-step"><label><input type="checkbox" data-sgstep="${n}" ${st.done?'checked':''}><span class="${st.done?'sdone-t':''}">${esc(st.t)}</span></label><button class="q-btn" data-sgstepdel="${n}" title="Remove step">✕</button></div>`).join('')}
+      <input id="sgStepNew" placeholder="＋ add a step (e.g. re-track bass)…" autocomplete="off"></div></div>
+    <div class="field"><label>Instruments played</label><input id="sgInstr" value="${esc(s.instruments||'')}" placeholder="e-drums, P-bass, Helix gtr, SP404…"></div>
+    <div class="field"><label>Link <span style="text-transform:none;letter-spacing:0">· demo file, Dropbox/iCloud URL, voice memo name</span></label><input id="sgLink" value="${esc(s.link||'')}" placeholder="https://… or kelp_v3.als"></div>
     <div class="field"><label>Lyrics</label><textarea id="sgLyrics" rows="6" placeholder="The song's own lyric sheet…">${esc(s.lyrics||'')}</textarea></div>
-    <div class="field"><label>Notes</label><textarea id="sgNotes" rows="2" placeholder="Where the demo lives, what's missing, next move…">${esc(s.notes||'')}</textarea></div>
+    <div class="field"><label>Notes</label><textarea id="sgNotes" rows="2" placeholder="What's missing, next move, who plays on it…">${esc(s.notes||'')}</textarea></div>
     ${attached.length?`<div class="field"><label>Attached scraps</label>${attached.map(l=>
       `<div class="lyr-mini" data-lid="${l.id}"><span>${esc(l.text.split('\n')[0].slice(0,60))}${l.text.length>60||l.text.includes('\n')?'…':''}</span><button class="q-btn" data-ldetach title="Back to the pool">⏏</button></div>`).join('')}</div>`:''}
     <div class="btns">
@@ -1796,6 +1826,36 @@ function openSongEditor(s){
       <div class="right"><button id="sgCancel">Cancel</button><button class="save" id="sgSave">Save</button></div>
     </div>
   </div>`;
+  const syncFields = ()=>{
+    s.title = dlg.querySelector('#sgTitle').value.trim() || s.title;
+    s.project = dlg.querySelector('#sgProj').value.trim();
+    s.key = dlg.querySelector('#sgKey').value.trim();
+    s.tempo = dlg.querySelector('#sgTempo').value.trim();
+    s.instruments = dlg.querySelector('#sgInstr').value.trim();
+    s.link = dlg.querySelector('#sgLink').value.trim();
+    s.lyrics = dlg.querySelector('#sgLyrics').value;
+    s.notes = dlg.querySelector('#sgNotes').value.trim();
+  };
+  dlg.querySelectorAll('[data-sgstep]').forEach(cb=>cb.onchange = ()=>{
+    s.steps[+cb.dataset.sgstep].done = cb.checked;
+    cb.nextElementSibling.classList.toggle('sdone-t', cb.checked);
+    save(); render();
+  });
+  dlg.querySelectorAll('[data-sgstepdel]').forEach(b=>b.onclick = ()=>{
+    syncFields();
+    s.steps.splice(+b.dataset.sgstepdel, 1);
+    save(); render(); openSongEditor(s);
+  });
+  const stepNew = dlg.querySelector('#sgStepNew');
+  stepNew.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){
+      const t = stepNew.value.trim(); if(!t) return;
+      syncFields();
+      s.steps.push({t, done:false});
+      save(); render(); openSongEditor(s);
+      const ni = document.querySelector('#sgStepNew'); if(ni) ni.focus();
+    }
+  });
   dlg.querySelectorAll('[data-ldetach]').forEach(b=>b.onclick=()=>{
     const l = db.lyrics.find(x=>x.id===b.closest('.lyr-mini').dataset.lid);
     if(l){ l.songId = null; save(); b.closest('.lyr-mini').remove(); toast('¶ back in the pool'); render(); }
@@ -1809,17 +1869,13 @@ function openSongEditor(s){
     dlg.close(); toast('Song deleted — scraps returned to pool', true); render();
   };
   dlg.querySelector('#sgSave').onclick = ()=>{
-    s.title = dlg.querySelector('#sgTitle').value.trim() || s.title;
-    s.project = dlg.querySelector('#sgProj').value.trim();
+    syncFields();
     const newStage = dlg.querySelector('#sgStage').value;
     if(newStage !== s.stage){
       if(newStage==='shelf') s.prevStage = s.stage;
       s.stage = newStage; s.stageAt = TODAY();
+      s.finishedAt = newStage==='done' ? TODAY() : null;
     }
-    s.key = dlg.querySelector('#sgKey').value.trim();
-    s.tempo = dlg.querySelector('#sgTempo').value.trim();
-    s.lyrics = dlg.querySelector('#sgLyrics').value;
-    s.notes = dlg.querySelector('#sgNotes').value.trim();
     save(); dlg.close(); toast('Saved'); render();
   };
   dlg.showModal();
