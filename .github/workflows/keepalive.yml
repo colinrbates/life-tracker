@@ -1,0 +1,21 @@
+name: Supabase keep-alive
+
+# Free-tier Supabase pauses projects after ~7 days without API activity.
+# This pings the project's REST API twice a week so it never sleeps.
+# The key below is the publishable (public) key — safe in a repo by design.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1,4" # Mondays and Thursdays, 08:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf \
+            -H "apikey: sb_publishable_9Eke6ShVrrBelVuduK4Qhw_2O4uTMbt" \
+            "https://lhpriysnnnyuyrdlstdm.supabase.co/rest/v1/" > /dev/null
+          echo "Supabase pinged — project stays awake."
