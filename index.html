@@ -809,7 +809,7 @@ function cardHTML(i, opts={}){
           : `<button class="pill pv${p} pill-btn" data-pill title="Change priority">${pillTxt}</button>`)
         : `<span class="pill pv${p}">${pillTxt}</span>`}
     </div>
-    <div class="meta">${esc(path)} · added ${agesc(i)}${stale?' <span class="age-warn">· stale</span>':''}${i.effort?' · '+EFFORT_LABEL[i.effort]:''}${i.due?' · due '+i.due:''}${snoozed(i)?' · 😴 until '+i.snoozedUntil:''}${i.waiting?` · ⏳ ${esc(i.waiting.who)} since ${sinceLabel(daysSince(i.waiting.since))}`:''}${i.doneAt?' · done '+i.doneAt:''}</div>
+    <div class="meta">${i.quick?`⚡ ${esc(i.quick)}${path?' › ':''}`:''}${esc(path)} · added ${agesc(i)}${stale?' <span class="age-warn">· stale</span>':''}${i.effort?' · '+EFFORT_LABEL[i.effort]:''}${i.due?' · due '+i.due:''}${snoozed(i)?' · 😴 until '+i.snoozedUntil:''}${i.waiting?` · ⏳ ${esc(i.waiting.who)} since ${sinceLabel(daysSince(i.waiting.since))}`:''}${i.doneAt?' · done '+i.doneAt:''}</div>
     ${i.next?`<div class="next">▸ ${esc(i.next)}</div>`:(opts.askNext&&i.status==='open'?`<div class="next-add"><input placeholder="Break it down — what's the very next physical action?" data-nextadd></div>`:'')}
     ${steps}
     ${i.notes?`<div class="note">${esc(i.notes)}</div>`:''}
@@ -1069,6 +1069,19 @@ function bindQuick(v){
   v.querySelectorAll('[data-qcheck]').forEach(cb=>cb.onchange=()=>{
     const f = findQuick(cb.closest('.q-item').dataset.qid); if(!f) return;
     f.q.done = cb.checked; f.q.doneAt = cb.checked ? TODAY() : null;
+    if(cb.checked){
+      // write a permanent record to Done history, badged with the box name
+      const it = {id:uid(), added:f.q.added||TODAY(), realm:'', stream:'', category:'',
+        desc:f.q.text, priority:null, ongoing:false, next:'', notes:'', due:null,
+        status:'done', doneAt:TODAY(), snoozedUntil:null, someday:false, effort:null,
+        waiting:null, quick:f.l.name};
+      db.items.unshift(it);
+      f.q.itemId = it.id;
+    } else if(f.q.itemId){
+      const idx = db.items.findIndex(i=>i.id===f.q.itemId && i.status==='done' && i.quick);
+      if(idx>=0) db.items.splice(idx,1);
+      f.q.itemId = null;
+    }
     save(); render();
   });
   v.querySelectorAll('[data-qedit]').forEach(el=>{
@@ -1157,7 +1170,7 @@ function viewToday(){
   h += `<div class="statrow">
     <div class="stat"><div class="n">${o.length}</div><div class="l">Open items</div></div>
     <div class="stat"><div class="n">${tn}</div><div class="l">Need triage</div></div>
-    <div class="stat"><div class="n">${db.items.filter(i=>i.status==='done'&&i.doneAt>=addDays(-7)).length + db.qlists.reduce((n,l)=>n+l.items.filter(q=>q.done&&q.doneAt>=addDays(-7)).length,0)}</div><div class="l">Done this week</div></div>
+    <div class="stat"><div class="n">${db.items.filter(i=>i.status==='done'&&i.doneAt>=addDays(-7)).length + db.qlists.reduce((n,l)=>n+l.items.filter(q=>q.done&&!q.itemId&&q.doneAt>=addDays(-7)).length,0)}</div><div class="l">Done this week</div></div>
   </div>`;
   if(picksAll.length){
     h += `<h2>This week's picks <b>· ${picksDone} of ${picksAll.length} done</b></h2>`;
@@ -1946,7 +1959,7 @@ function momentumHTML(){
   // average days from added → done, per stream
   const clear = {};
   db.items.forEach(i=>{
-    if(i.status!=='done' || !i.doneAt || !i.added || i.ongoing) return;
+    if(i.status!=='done' || !i.doneAt || !i.added || i.ongoing || i.quick) return;
     const days = Math.max(0, (new Date(i.doneAt+'T12:00') - new Date(i.added+'T12:00'))/864e5);
     (clear[streamKey(i)] = clear[streamKey(i)]||[]).push(days);
   });
