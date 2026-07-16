@@ -216,6 +216,9 @@ dialog::backdrop{background:rgba(15,22,18,.45)}
 .q-item input[type=checkbox]{accent-color:var(--accent);width:17px;height:17px;flex-shrink:0;margin:0}
 .q-text{flex:1;font-size:14.5px;min-width:0;overflow-wrap:anywhere}
 .qdone .q-text{text-decoration:line-through;color:var(--ink-faint)}
+.q-item .q-text[data-qedit]{cursor:text;border-radius:5px}
+.q-item .q-text[data-qedit]:hover{background:var(--accent-soft)}
+.q-edit-in{flex:1;border:1px solid var(--accent);border-radius:6px;padding:4px 8px;background:var(--ground);font-size:14.5px;min-width:0}
 .q-btn{border:none;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:3px 8px;border-radius:6px;font-weight:700;flex-shrink:0}
 .q-btn:hover{color:var(--accent);background:var(--accent-soft)}
 .q-mvs{display:inline-flex;flex-shrink:0}
@@ -959,13 +962,15 @@ function bindBanners(v){
 function qRowHTML(q, first, last){
   return `<div class="q-item ${q.done?'qdone':''}" data-qid="${q.id}">
     <input type="checkbox" ${q.done?'checked':''} data-qcheck aria-label="Done">
-    <span class="q-text">${esc(q.text)}</span>
+    ${!q.done && qEditId===q.id
+      ? `<input class="q-edit-in" data-qeditin value="${esc(q.text)}">`
+      : `<span class="q-text" ${q.done?'':'data-qedit role="button" tabindex="0" title="Tap to edit"'}>${esc(q.text)}</span>`}
     ${q.done?'':`<span class="q-mvs"><button class="q-btn q-mv" data-qmv="-1" ${first?'disabled':''} aria-label="Move up">↑</button><button class="q-btn q-mv" data-qmv="1" ${last?'disabled':''} aria-label="Move down">↓</button></span>
     <button class="q-btn" data-qpromote title="Turn into a full tracked item">File ↗</button>`}
     <button class="q-btn" data-qdel aria-label="Delete">✕</button>
   </div>`;
 }
-let qDrafts = {}, qRename = null, qAddOpen = false;
+let qDrafts = {}, qRename = null, qAddOpen = false, qEditId = null;
 function findQuick(id){
   for(const l of db.qlists){
     const idx = l.items.findIndex(q=>q.id===id);
@@ -1065,6 +1070,31 @@ function bindQuick(v){
     const f = findQuick(cb.closest('.q-item').dataset.qid); if(!f) return;
     f.q.done = cb.checked; f.q.doneAt = cb.checked ? TODAY() : null;
     save(); render();
+  });
+  v.querySelectorAll('[data-qedit]').forEach(el=>{
+    const start = ()=>{
+      qEditId = el.closest('.q-item').dataset.qid;
+      render();
+      const inp = document.querySelector('[data-qeditin]');
+      if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    };
+    el.onclick = start;
+    el.onkeydown = e=>{ if(e.key==='Enter') start(); };
+  });
+  v.querySelectorAll('[data-qeditin]').forEach(inp=>{
+    const commit = ()=>{
+      if(qEditId === null) return;
+      const f = findQuick(inp.closest('.q-item').dataset.qid);
+      const val = inp.value.trim();
+      qEditId = null;
+      if(f && val && val !== f.q.text){ f.q.text = val; save(); }
+      render();
+    };
+    inp.addEventListener('keydown', e=>{
+      if(e.key==='Enter') commit();
+      if(e.key==='Escape'){ qEditId = null; render(); }
+    });
+    inp.addEventListener('blur', commit);
   });
   v.querySelectorAll('[data-qmv]').forEach(b=>b.onclick=()=>{
     const f = findQuick(b.closest('.q-item').dataset.qid); if(!f) return;
