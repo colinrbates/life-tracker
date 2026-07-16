@@ -966,7 +966,7 @@ function qRowHTML(q, first, last){
       ? `<input class="q-edit-in" data-qeditin value="${esc(q.text)}">`
       : `<span class="q-text" ${q.done?'':'data-qedit role="button" tabindex="0" title="Tap to edit"'}>${esc(q.text)}</span>`}
     ${q.done?'':`<span class="q-mvs"><button class="q-btn q-mv" data-qmv="-1" ${first?'disabled':''} aria-label="Move up">↑</button><button class="q-btn q-mv" data-qmv="1" ${last?'disabled':''} aria-label="Move down">↓</button></span>
-    <button class="q-btn" data-qpromote title="Turn into a full tracked item">File ↗</button>`}
+    <button class="q-btn" data-qpromote title="Turn into a full tracked item" aria-label="File as a tracked task">↗</button>`}
     <button class="q-btn" data-qdel aria-label="Delete">✕</button>
   </div>`;
 }
