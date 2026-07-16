@@ -504,7 +504,19 @@ function migrate(d){
     });
     d.settings.qlSeeded2 = true;
   }
-  d.qlists.forEach(l=>{ l.items = (l.items||[]).filter(q=>!q.done || !q.doneAt || q.doneAt >= addDays(-3)); });
+  d.qlists.forEach(l=>{
+    // checked quick items live in Done history, not the box
+    l.items = (l.items||[]).filter(q=>{
+      if(!q.done) return true;
+      if(!q.itemId){
+        d.items.unshift({id:'qh'+q.id, added:q.added||q.doneAt||null, realm:'', stream:'', category:'',
+          desc:q.text, priority:null, ongoing:false, next:'', notes:'', due:null,
+          status:'done', doneAt:q.doneAt||q.added||null, snoozedUntil:null, someday:false,
+          effort:null, waiting:null, quick:l.name});
+      }
+      return false;
+    });
+  });
   d.settings.place = '';
   d.songs = d.songs || [];
   d.lyrics = d.lyrics || [];
@@ -978,7 +990,6 @@ function findQuick(id){
 }
 function quickBoxHTML(l){
   const undone = l.items.filter(q=>!q.done);
-  const doneRecent = l.items.filter(q=>q.done);
   const draft = qDrafts[l.id]||'';
   const naming = qRename===l.id;
   return `<div class="quick" data-ql="${l.id}">
@@ -991,7 +1002,7 @@ function quickBoxHTML(l){
       <textarea class="q-ta" rows="${Math.min(6, Math.max(1, draft.split('\n').length))}" placeholder="One per line, ⏎ for the next…">${esc(draft)}</textarea>
       <button class="q-commit" data-qact="commit" aria-label="Add these lines" title="Add these lines">✓</button>
     </div>
-    ${undone.map((q,ix)=>qRowHTML(q, ix===0, ix===undone.length-1)).join('')}${doneRecent.map(q=>qRowHTML(q)).join('')}
+    ${undone.map((q,ix)=>qRowHTML(q, ix===0, ix===undone.length-1)).join('')}
   </div>`;
 }
 function quickHTML(){
@@ -1065,22 +1076,24 @@ function bindQuick(v){
   });
   // item actions (searched across all lists)
   v.querySelectorAll('[data-qcheck]').forEach(cb=>cb.onchange=()=>{
+    if(!cb.checked) return;
     const f = findQuick(cb.closest('.q-item').dataset.qid); if(!f) return;
-    f.q.done = cb.checked; f.q.doneAt = cb.checked ? TODAY() : null;
-    if(cb.checked){
-      // write a permanent record to Done history, badged with the box name
-      const it = {id:uid(), added:f.q.added||TODAY(), realm:'', stream:'', category:'',
-        desc:f.q.text, priority:null, ongoing:false, next:'', notes:'', due:null,
-        status:'done', doneAt:TODAY(), snoozedUntil:null, someday:false, effort:null,
-        waiting:null, quick:f.l.name};
-      db.items.unshift(it);
-      f.q.itemId = it.id;
-    } else if(f.q.itemId){
-      const idx = db.items.findIndex(i=>i.id===f.q.itemId && i.status==='done' && i.quick);
-      if(idx>=0) db.items.splice(idx,1);
-      f.q.itemId = null;
-    }
-    save(); render();
+    // straight to Done history, badged with the box name — no lingering
+    const it = {id:uid(), added:f.q.added||TODAY(), realm:'', stream:'', category:'',
+      desc:f.q.text, priority:null, ongoing:false, next:'', notes:'', due:null,
+      status:'done', doneAt:TODAY(), snoozedUntil:null, someday:false, effort:null,
+      waiting:null, quick:f.l.name};
+    db.items.unshift(it);
+    const restore = f.q, restoreIdx = f.idx, list = f.l;
+    list.items.splice(f.idx, 1);
+    save();
+    undoFn = ()=>{
+      const ri = db.items.findIndex(x=>x.id===it.id);
+      if(ri>=0) db.items.splice(ri,1);
+      list.items.splice(Math.min(restoreIdx, list.items.length), 0, restore);
+      save(); render();
+    };
+    toast('Done ✓', true); render();
   });
   v.querySelectorAll('[data-qedit]').forEach(el=>{
     const start = ()=>{
@@ -1168,7 +1181,7 @@ function viewToday(){
   h += `<div class="statrow">
     <div class="stat"><div class="n">${o.length}</div><div class="l">Open items</div></div>
     <div class="stat"><div class="n">${tn}</div><div class="l">Need triage</div></div>
-    <div class="stat"><div class="n">${db.items.filter(i=>i.status==='done'&&i.doneAt>=addDays(-7)).length + db.qlists.reduce((n,l)=>n+l.items.filter(q=>q.done&&!q.itemId&&q.doneAt>=addDays(-7)).length,0)}</div><div class="l">Done this week</div></div>
+    <div class="stat"><div class="n">${db.items.filter(i=>i.status==='done'&&i.doneAt>=addDays(-7)).length}</div><div class="l">Done this week</div></div>
   </div>`;
   if(picksAll.length){
     h += `<h2>This week's picks <b>· ${picksDone} of ${picksAll.length} done</b></h2>`;
